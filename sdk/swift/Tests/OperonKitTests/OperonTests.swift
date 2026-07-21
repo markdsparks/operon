@@ -13,6 +13,7 @@ private struct Decision: Codable, Sendable, Equatable {
 private actor ScriptedProvider: OperonModelProvider {
   private var responses: [String]
   private(set) var requestCount = 0
+  private(set) var lastPrompt = ""
 
   init(_ responses: [String]) {
     self.responses = responses
@@ -24,6 +25,7 @@ private actor ScriptedProvider: OperonModelProvider {
 
   func generate(_ request: OperonGenerationRequest) async throws -> OperonGenerationResponse {
     requestCount += 1
+    lastPrompt = request.messages.map(\.content).joined(separator: "\n")
     guard !responses.isEmpty else {
       throw OperonError.provider("script exhausted")
     }
@@ -197,5 +199,55 @@ func applicationValidatorTriggersTargetedRepair() async throws {
     #expect(result.output == Decision(decision: "partial", amount: 68))
     #expect(result.wasRepaired)
     #expect(await provider.requestCount == 2)
+  }
+#endif
+
+#if os(macOS)
+  @Test
+  func durableMemoryIsScopedPersistentAndInjectedThroughTheCore() async throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("operon-memory-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let memory = try FileOperonMemoryStore(url: url)
+    let scope = OperonMemoryScope(namespace: "customer-42")
+    _ = try await memory.put(
+      OperonMemoryRecord(
+        namespace: scope.namespace,
+        kind: .preference,
+        content: "Customer prefers concise answers.",
+        authority: .userConfirmed
+      )
+    )
+    _ = try await memory.put(
+      OperonMemoryRecord(
+        namespace: "customer-99",
+        kind: .preference,
+        content: "This other customer's memory must never be returned.",
+        authority: .userConfirmed
+      )
+    )
+
+    let provider = ScriptedProvider([
+      #"{"answer":"Noted.","confidence":0.9,"used_source_ids":[]}"#
+    ])
+    let driver = OperonCoreDriver(
+      model: provider,
+      memory: memory,
+      memoryScope: scope,
+      policy: OperonPolicy(planning: .never)
+    )
+    _ = try await driver.run("How should I respond?")
+
+    let prompt = await provider.lastPrompt
+    #expect(prompt.contains("Customer prefers concise answers."))
+    #expect(!prompt.contains("other customer's memory"))
+    let stored = try FileOperonMemoryStore(url: url)
+    let records = try await stored.search("concise", scope: scope, limit: 5)
+    #expect(records.count == 1)
+    let tombstoned = try await stored.tombstone(records[0].id)
+    #expect(tombstoned)
+    let afterTombstone = try await stored.search("concise", scope: scope, limit: 5)
+    #expect(afterTombstone.isEmpty)
   }
 #endif

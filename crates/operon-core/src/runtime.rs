@@ -75,6 +75,7 @@ impl<'a> OperonRuntime<'a> {
                 has_grounding: self.grounding.is_some(),
                 output_schema: self.output_schema.clone(),
                 has_application_validator: false,
+                memory_scope: None,
             },
         )?;
         let mut step = session.start()?;

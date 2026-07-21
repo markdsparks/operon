@@ -9,9 +9,9 @@ use crate::runtime::{
     parse_model_json, plan_schema, validate_answer, validate_output, validate_schema_definition,
 };
 use crate::{
-    ExecutionPolicy, ExecutionTrace, GenerationRequest, GenerationResponse, MemoryRecord,
-    MemoryScope, Message, OperonError, OperonResponse, OperonResult, Plan, Source, Stage, Strategy,
-    TraceEvent,
+    ContextBudget, ExecutionPolicy, ExecutionTrace, GenerationRequest, GenerationResponse,
+    MemoryRecord, MemoryScope, Message, OperonError, OperonResponse, OperonResult, Plan, Source,
+    Stage, Strategy, TraceEvent, compile_context,
 };
 
 pub const EXECUTION_PROTOCOL_VERSION: &str = "0.1";
@@ -172,6 +172,9 @@ pub struct SessionConfig {
     /// When true, the host must validate the application output before the
     /// session completes. Returned errors are eligible for targeted repair.
     pub has_application_validator: bool,
+    /// An application-authorized durable-memory read scope. When present, the
+    /// session yields SearchMemory before retrieval and generation.
+    pub memory_scope: Option<MemoryScope>,
 }
 
 #[derive(Debug)]
@@ -179,6 +182,7 @@ enum Pending {
     None,
     Plan(u64),
     Retrieval(u64),
+    MemorySearch(u64),
     Answer(u64),
     Repair(u64),
     ApplicationValidation(u64),
@@ -193,6 +197,7 @@ pub struct ExecutionSession {
     next_request_id: u64,
     plan: Option<Plan>,
     sources: Vec<Source>,
+    memories: Vec<MemoryRecord>,
     repair_attempts: usize,
     was_repaired: bool,
     pending_payload: Option<AnswerPayload>,
@@ -219,6 +224,7 @@ impl ExecutionSession {
             next_request_id: 1,
             plan: None,
             sources: Vec::new(),
+            memories: Vec::new(),
             repair_attempts: 0,
             was_repaired: false,
             pending_payload: None,
@@ -260,6 +266,7 @@ impl ExecutionSession {
         let expected = match self.pending {
             Pending::Plan(id)
             | Pending::Retrieval(id)
+            | Pending::MemorySearch(id)
             | Pending::Answer(id)
             | Pending::Repair(id)
             | Pending::ApplicationValidation(id) => id,
@@ -309,6 +316,15 @@ impl ExecutionSession {
                     }),
                 );
                 Ok(self.answer_command())
+            }
+            (Pending::MemorySearch(_), ExecutionEvent::MemorySearchCompleted { records, .. }) => {
+                self.memories = records;
+                self.trace.add(
+                    Stage::Ground,
+                    "retrieved scoped durable memory",
+                    json!({ "records": self.memories.len() }),
+                );
+                Ok(self.after_memory())
             }
             (Pending::Answer(_), ExecutionEvent::GenerationCompleted { response, .. }) => {
                 self.trace_generation(Stage::Generate, &response);
@@ -382,19 +398,28 @@ impl ExecutionSession {
     }
 
     fn after_plan(&mut self) -> ExecutionStep {
+        if let Some(scope) = self.config.memory_scope.clone() {
+            let request_id = self.allocate_request_id();
+            self.pending = Pending::MemorySearch(request_id);
+            return ExecutionStep::Command(ExecutionCommand::SearchMemory {
+                protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+                request_id,
+                query: self.context_query(),
+                scope,
+                limit: self.config.policy.max_sources,
+            });
+        }
+        self.after_memory()
+    }
+
+    fn after_memory(&mut self) -> ExecutionStep {
         if self.config.has_grounding {
-            let plan = self.plan.as_ref().expect("plan exists");
-            let retrieval_query = std::iter::once(self.query.as_str())
-                .chain(std::iter::once(plan.intent.as_str()))
-                .chain(plan.subquestions.iter().map(String::as_str))
-                .collect::<Vec<_>>()
-                .join("\n");
             let request_id = self.allocate_request_id();
             self.pending = Pending::Retrieval(request_id);
             ExecutionStep::Command(ExecutionCommand::Retrieve {
                 protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
                 request_id,
-                query: retrieval_query,
+                query: self.context_query(),
                 limit: self.config.policy.max_sources,
             })
         } else {
@@ -407,8 +432,22 @@ impl ExecutionSession {
         }
     }
 
+    fn context_query(&self) -> String {
+        let plan = self.plan.as_ref().expect("plan exists");
+        std::iter::once(self.query.as_str())
+            .chain(std::iter::once(plan.intent.as_str()))
+            .chain(plan.subquestions.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     fn answer_command(&mut self) -> ExecutionStep {
-        let context = format_sources(&self.sources, self.config.policy.max_context_chars);
+        let context = compile_context(
+            None,
+            &self.memories,
+            &self.sources,
+            ContextBudget::from_total(self.config.policy.max_context_chars),
+        );
         let plan = self.plan.as_ref().expect("plan exists");
         let plan_json = serde_json::to_string_pretty(plan).expect("plan serializes");
         let request_id = self.allocate_request_id();
@@ -421,12 +460,17 @@ impl ExecutionSession {
                 messages: vec![
                     Message::system(ANSWER_SYSTEM_PROMPT),
                     Message::user(format!(
-                        "QUERY:\n{}\n\nPLAN:\n{plan_json}\n\nLOCAL SOURCES:\n{}{}",
+                        "QUERY:\n{}\n\nPLAN:\n{plan_json}\n\nLOCAL MEMORY:\n{}\n\nLOCAL SOURCES:\n{}{}",
                         self.query,
-                        if context.is_empty() {
+                        if context.memory.is_empty() {
                             "(none)"
                         } else {
-                            &context
+                            &context.memory
+                        },
+                        if context.sources.is_empty() {
+                            "(none)"
+                        } else {
+                            &context.sources
                         },
                         output_instruction(self.config.output_schema.as_ref())
                     )),

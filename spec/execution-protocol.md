@@ -55,6 +55,11 @@ The protocol defines read access only. Applications write, supersede, tombstone,
 export, and delete records through their storage adapter. A model cannot acquire
 durable-memory write authority by emitting text.
 
+When a session is configured with a `MemoryScope`, the core yields Search memory
+after planning and before grounding/generation. Returned records are compiled
+into the bounded local context as attributed historical data; they are not
+instructions and do not bypass source or output validation.
+
 ### Validate output
 
 Requests application-owned validation of the candidate `output` value after

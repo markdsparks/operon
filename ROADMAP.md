@@ -46,7 +46,8 @@ least three task classes while reporting its latency and generation overhead.
 - [x] Define an experimental host-owned durable-memory search command and typed record envelope
 - [x] Add application-authorized SQLite/FTS5 durable-memory retrieval to the Python reference host
 - [x] Add scope, deletion, temporal-update, and untrusted-memory conformance fixtures
-- [ ] Drive session and memory context through the shared core after the C ABI lands
+- [x] Drive scoped durable-memory context through the shared core and Apple host
+- [ ] Add durable session-context injection through the shared core and Apple host
 
 ## Milestone 3: Apple native
 

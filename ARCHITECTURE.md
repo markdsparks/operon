@@ -99,7 +99,8 @@ See [spec/execution-protocol.md](spec/execution-protocol.md) and
 The recommended session and durable-memory architecture is documented in
 [local context and memory research](docs/research/local-memory-architecture.md).
 
-The protocol now reserves a host-owned `SearchMemory` command. The Python
+The protocol now emits a host-owned `SearchMemory` command whenever a session
+is configured with an authorized memory scope. The Python
 reference host implements application-authored SQLite/FTS5 records; the core
 does not yet emit the command while the C ABI and shared context compiler are
 being defined.

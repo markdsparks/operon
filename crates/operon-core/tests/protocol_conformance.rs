@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use operon_core::{
     ExecutionCommand, ExecutionEvent, ExecutionPolicy, ExecutionSession, ExecutionStep,
-    SessionConfig, Stage, Strategy,
+    MemoryScope, MemorySensitivity, SessionConfig, Stage, Strategy,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -32,6 +32,7 @@ fn replays_refund_grounding_repair_fixture() {
             has_grounding: true,
             output_schema: None,
             has_application_validator: false,
+            memory_scope: None,
         },
     )
     .unwrap();
@@ -115,6 +116,7 @@ fn application_validation_errors_trigger_a_targeted_repair() {
                 "additionalProperties": false
             })),
             has_application_validator: true,
+            memory_scope: None,
         },
     )
     .unwrap();
@@ -183,6 +185,76 @@ fn application_validation_errors_trigger_a_targeted_repair() {
     };
     assert!(result.was_repaired);
     assert_eq!(result.output.unwrap()["decision"], "partial");
+}
+
+#[test]
+fn memory_scope_yields_search_before_generation_and_enters_context() {
+    let scope = MemoryScope {
+        namespace: "customer-42".into(),
+        subject: None,
+        allowed_sensitivities: vec![MemorySensitivity::Private],
+    };
+    let mut session = ExecutionSession::new(
+        "How should I respond?",
+        SessionConfig {
+            policy: ExecutionPolicy {
+                planning: Strategy::Never,
+                ..ExecutionPolicy::default()
+            },
+            has_grounding: false,
+            output_schema: None,
+            has_application_validator: false,
+            memory_scope: Some(scope.clone()),
+        },
+    )
+    .unwrap();
+    let request_id = match session.start().unwrap() {
+        ExecutionStep::Command(ExecutionCommand::SearchMemory {
+            request_id,
+            scope: command_scope,
+            ..
+        }) => {
+            assert_eq!(command_scope, scope);
+            request_id
+        }
+        _ => panic!("expected memory search"),
+    };
+    let memory = operon_core::MemoryRecord {
+        id: "M1".into(),
+        namespace: "customer-42".into(),
+        subject: None,
+        kind: operon_core::MemoryKind::Preference,
+        content: "Customer prefers concise answers.".into(),
+        authority: operon_core::MemoryAuthority::UserConfirmed,
+        sensitivity: MemorySensitivity::Private,
+        confidence: None,
+        source_ids: vec![],
+        occurred_at: None,
+        observed_at: "2026-07-21T00:00:00Z".into(),
+        valid_from: None,
+        valid_until: None,
+        supersedes: None,
+        status: operon_core::MemoryStatus::Active,
+        created_by: "application".into(),
+        schema_version: 1,
+    };
+    match session
+        .resume(ExecutionEvent::MemorySearchCompleted {
+            protocol_version: "0.1".into(),
+            request_id,
+            records: vec![memory],
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::Generate { request, .. }) => {
+            assert!(
+                request.messages[1]
+                    .content
+                    .contains("Customer prefers concise answers.")
+            );
+        }
+        _ => panic!("expected answer generation"),
+    }
 }
 
 fn load_fixture(name: &str) -> Fixture {

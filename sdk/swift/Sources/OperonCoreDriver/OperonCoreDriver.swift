@@ -11,15 +11,21 @@ import OperonKit
 public final class OperonCoreDriver {
   private let model: any OperonModelProvider
   private let grounding: (any OperonGroundingProvider)?
+  private let memory: (any OperonMemoryStore)?
+  private let memoryScope: OperonMemoryScope?
   private let policy: OperonPolicy
 
   public init(
     model: any OperonModelProvider,
     grounding: (any OperonGroundingProvider)? = nil,
+    memory: (any OperonMemoryStore)? = nil,
+    memoryScope: OperonMemoryScope? = nil,
     policy: OperonPolicy = .init()
   ) {
     self.model = model
     self.grounding = grounding
+    self.memory = memory
+    self.memoryScope = memoryScope
     self.policy = policy
   }
 
@@ -74,7 +80,8 @@ public final class OperonCoreDriver {
       query: query,
       configJSON: try sessionConfigJSON(
         outputSchema: outputSchema,
-        hasApplicationValidator: validateOutput != nil
+        hasApplicationValidator: validateOutput != nil,
+        memoryScope: memoryScope
       )
     )
     var step = try session.start()
@@ -142,11 +149,19 @@ public final class OperonCoreDriver {
         requestID: command.requestID,
         values: ["sources": encodedSources]
       )
-    case .searchMemory:
-      return try failureJSON(
+    case .searchMemory(let query, let scope, let limit):
+      guard let memory else {
+        return try failureJSON(
+          requestID: command.requestID,
+          failure: "memory",
+          message: "The Rust core requested memory, but no memory store is configured."
+        )
+      }
+      let records = try await memory.search(query, scope: scope, limit: limit)
+      return try eventJSON(
+        kind: "memory_search_completed",
         requestID: command.requestID,
-        failure: "memory",
-        message: "Memory search is not configured for this Apple host yet."
+        values: ["records": try records.map(memoryJSONObject)]
       )
     case .validateOutput(let output):
       guard let validateOutput else {
@@ -166,7 +181,8 @@ public final class OperonCoreDriver {
 
   private func sessionConfigJSON(
     outputSchema: [String: Any]?,
-    hasApplicationValidator: Bool
+    hasApplicationValidator: Bool,
+    memoryScope: OperonMemoryScope?
   ) throws -> String {
     let policy: [String: Any] = [
       "local_only": true,
@@ -184,6 +200,9 @@ public final class OperonCoreDriver {
     ]
     if let outputSchema {
       config["output_schema"] = outputSchema
+    }
+    if let memoryScope {
+      config["memory_scope"] = try memoryJSONObject(memoryScope)
     }
     return try stringify(config)
   }
@@ -225,7 +244,7 @@ public struct OperonCoreCompletedResult: Sendable, Equatable {
 private enum CoreCommandKind {
   case generate
   case retrieve(query: String, limit: Int)
-  case searchMemory
+  case searchMemory(query: String, scope: OperonMemoryScope, limit: Int)
   case validateOutput(Any)
 }
 
@@ -297,9 +316,16 @@ private struct CoreCommand {
         maximumResponseTokens: nil
       )
     case "search_memory":
+      guard let query = command["query"] as? String,
+        let rawScope = command["scope"] as? [String: Any],
+        let limit = command["limit"] as? Int
+      else {
+        throw OperonCoreError.invalidResponse("Memory command is missing query, scope, or limit.")
+      }
+      let scope = try decodeMemoryScope(rawScope)
       return Self(
         requestID: requestID,
-        kind: .searchMemory,
+        kind: .searchMemory(query: query, scope: scope, limit: limit),
         messages: [],
         schema: .string,
         temperature: 0,
@@ -397,6 +423,23 @@ private func dictionary(from json: String) throws -> [String: Any] {
 
 private func stringify(_ object: [String: Any]) throws -> String {
   String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+}
+
+private func memoryJSONObject<Value: Encodable>(_ value: Value) throws -> [String: Any] {
+  guard
+    let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
+      as? [String: Any]
+  else {
+    throw OperonCoreError.invalidResponse("Memory value could not encode as a JSON object.")
+  }
+  return object
+}
+
+private func decodeMemoryScope(_ value: [String: Any]) throws -> OperonMemoryScope {
+  try JSONDecoder().decode(
+    OperonMemoryScope.self,
+    from: JSONSerialization.data(withJSONObject: value)
+  )
 }
 
 private struct CoreTerminalEnvelope: Decodable {
