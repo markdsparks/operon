@@ -6,6 +6,7 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
+from benchmarks.compare import Profile, comparison, estimated_cost
 from benchmarks.matrix import aggregate_matrix, model_slug
 from benchmarks.run import (
     PROTOCOL_VERSION,
@@ -132,6 +133,24 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(model_slug("model:1b"), "model-1b")
         self.assertEqual(result["model:1b"]["runs"], 1)
         self.assertEqual(result["model:1b"]["summary"]["operon_full"]["accuracy"], 1)
+
+    def test_profile_comparison_keeps_cost_assumptions_explicit(self) -> None:
+        record = RunRecord(
+            timestamp="now", model="cloud", profile="cloud-reference", case_id="case",
+            case_title="Case", configuration="operon_full", repetition=1, success=True,
+            correct=True, duration_ms=100, model_calls=2, prompt_tokens=1_000,
+            completion_tokens=500,
+        )
+        profile = Profile(
+            name="cloud-reference", model="cloud", base_url="https://example.invalid/v1",
+            input_cost_per_million=2, output_cost_per_million=4,
+        )
+        self.assertEqual(estimated_cost(record, profile), 0.004)
+        result = comparison([record], [profile])
+        self.assertEqual(
+            result["cloud-reference"]["summary"]["operon_full"]["estimated_average_cost_usd"],
+            0.004,
+        )
 
 
 if __name__ == "__main__":

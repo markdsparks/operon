@@ -1,0 +1,17 @@
+[
+  {
+    "name": "local-qwen3-4b",
+    "model": "qwen3:4b",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "input_cost_per_million": 0,
+    "output_cost_per_million": 0
+  },
+  {
+    "name": "cloud-reference",
+    "model": "replace-with-cloud-model",
+    "base_url": "https://your-openai-compatible-endpoint/v1",
+    "api_key_env": "OPERON_CLOUD_API_KEY",
+    "input_cost_per_million": 0,
+    "output_cost_per_million": 0
+  }
+]

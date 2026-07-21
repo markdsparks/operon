@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import platform
+import os
 import re
 import sys
 import uuid
@@ -93,6 +94,7 @@ class RunRecord:
     run_id: str = ""
     case_digest: str = ""
     runtime_metadata: dict[str, str] | None = None
+    profile: str = ""
 
 
 def load_cases(path: Path) -> list[Case]:
@@ -385,12 +387,22 @@ def summarize(records: Sequence[RunRecord]) -> dict[str, dict[str, float | int |
             "source_recall": mean(recalls) if recalls else None,
             "source_precision": mean(precisions) if precisions else None,
             "average_latency_ms": mean(record.duration_ms for record in group),
+            "median_latency_ms": _percentile([record.duration_ms for record in group], 0.5),
+            "p95_latency_ms": _percentile([record.duration_ms for record in group], 0.95),
             "average_model_calls": mean(record.model_calls for record in group),
             "average_prompt_tokens": mean(prompt_tokens) if prompt_tokens else None,
             "average_completion_tokens": mean(completion_tokens) if completion_tokens else None,
             "repair_rate": mean(record.was_repaired for record in group),
         }
     return summary
+
+
+def _percentile(values: list[float], quantile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = round((len(ordered) - 1) * quantile)
+    return ordered[index]
 
 
 def _print_summary(summary: dict[str, dict[str, float | int | None]]) -> None:
@@ -419,6 +431,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--case", action="append", dest="case_ids")
     parser.add_argument("--config", action="append", choices=CONFIGURATIONS, dest="configs")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--profile", default="local")
+    parser.add_argument("--api-key-env")
     return parser
 
 
@@ -441,7 +455,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("", encoding="utf-8")
-    provider = OpenAICompatibleProvider(model=args.model, base_url=args.base_url)
+    api_key = os.environ.get(args.api_key_env) if args.api_key_env else None
+    if args.api_key_env and not api_key:
+        print(f"benchmark: environment variable {args.api_key_env} is not set", file=sys.stderr)
+        return 2
+    provider = OpenAICompatibleProvider(model=args.model, base_url=args.base_url, api_key=api_key)
     records: list[RunRecord] = []
     run_id = str(uuid.uuid4())
 
@@ -472,6 +490,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         error=f"{type(exc).__name__}: {exc}",
                     )
                 stamp_record(record, run_id, case)
+                record.profile = args.profile
                 records.append(record)
                 with output.open("a", encoding="utf-8") as handle:
                     handle.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")

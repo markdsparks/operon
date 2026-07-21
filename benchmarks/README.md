@@ -88,3 +88,29 @@ PYTHONPATH=sdk/python/src:. python3 -m benchmarks.matrix \
 The coordinator preserves each model's JSONL output and writes a combined
 `matrix-summary.json`. Use `--case` and `--config` repeatedly for a staged smoke
 run before committing to the full matrix.
+
+## Fair local and cloud comparison
+
+Use a profile manifest to compare local and cloud models against the same cases,
+authorized documents, output contracts, and scoring rules. Start from
+`benchmarks/profiles.example.json`; credentials are named by environment
+variable and never stored in the manifest or result files.
+
+```bash
+export OPERON_CLOUD_API_KEY=...
+PYTHONPATH=sdk/python/src:. python3 -m benchmarks.compare \
+  --profiles benchmarks/profiles.json \
+  --repetitions 5
+```
+
+The comparison writes one raw JSONL file per profile plus `comparison.json`.
+It reports decision reliability, completeness, provenance, mean/median/p95
+latency, model calls, token use, repair rate, and optional price-table cost
+estimates. Local costs remain zero unless you explicitly choose a device-cost
+model; latency and tokens are reported separately.
+
+Interpret comparisons in two dimensions: direct local versus local Operon
+measures runtime uplift, while local Operon versus a cloud direct profile is a
+quality/latency/cost reference. Do not treat either as a general intelligence
+ranking. Run at least five repetitions and review disagreements before making a
+public claim.
