@@ -168,6 +168,7 @@ class BenchmarkTests(unittest.TestCase):
                             "model": "cloud",
                             "base_url": "https://example.invalid/v1",
                             "allow_remote": True,
+                            "completion_token_parameter": "max_completion_tokens",
                         },
                     ]
                 ),
@@ -177,6 +178,7 @@ class BenchmarkTests(unittest.TestCase):
 
         self.assertFalse(default.allow_remote)
         self.assertTrue(remote.allow_remote)
+        self.assertEqual(remote.completion_token_parameter, "max_completion_tokens")
 
 
 if __name__ == "__main__":

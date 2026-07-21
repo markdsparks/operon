@@ -97,6 +97,9 @@ authorized documents, output contracts, and scoring rules. Start from
 variable and never stored in the manifest or result files. A remote profile must
 also explicitly set `"allow_remote": true`; this is limited to the benchmark
 process and does not change Operon's privacy-first product default.
+If a cloud model rejects `max_tokens`, set its profile's
+`"completion_token_parameter": "max_completion_tokens"`; local profiles
+continue to use the default `max_tokens`.
 
 ```bash
 export OPERON_CLOUD_API_KEY=...

@@ -26,6 +26,13 @@ class OpenAICompatibleProvider:
     api_key: str | None = None
     timeout_seconds: float = 60.0
     supports_structured_output: bool = True
+    completion_token_parameter: str = "max_tokens"
+
+    def __post_init__(self) -> None:
+        if self.completion_token_parameter not in {"max_tokens", "max_completion_tokens"}:
+            raise ValueError(
+                "completion_token_parameter must be max_tokens or max_completion_tokens"
+            )
 
     @property
     def capabilities(self) -> ModelCapabilities:
@@ -47,7 +54,7 @@ class OpenAICompatibleProvider:
             "stream": False,
         }
         if request.max_tokens is not None:
-            payload["max_tokens"] = request.max_tokens
+            payload[self.completion_token_parameter] = request.max_tokens
         if request.reasoning_effort is not None:
             payload["reasoning_effort"] = request.reasoning_effort
         if request.schema is not None and self.supports_structured_output:

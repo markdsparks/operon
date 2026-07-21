@@ -442,6 +442,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", default="local")
     parser.add_argument("--api-key-env")
     parser.add_argument(
+        "--completion-token-parameter",
+        choices=("max_tokens", "max_completion_tokens"),
+        default="max_tokens",
+        help="Provider-specific field used to limit generated completion tokens.",
+    )
+    parser.add_argument(
         "--allow-remote",
         action="store_true",
         help="Permit the Operon configurations to use a non-local inference provider.",
@@ -472,7 +478,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.api_key_env and not api_key:
         print(f"benchmark: environment variable {args.api_key_env} is not set", file=sys.stderr)
         return 2
-    provider = OpenAICompatibleProvider(model=args.model, base_url=args.base_url, api_key=api_key)
+    provider = OpenAICompatibleProvider(
+        model=args.model,
+        base_url=args.base_url,
+        api_key=api_key,
+        completion_token_parameter=args.completion_token_parameter,
+    )
     records: list[RunRecord] = []
     run_id = str(uuid.uuid4())
 
