@@ -25,6 +25,43 @@ public final class OperonCoreDriver {
 
   /// Executes the core's command loop and returns its terminal protocol result.
   public func run(_ query: String) async throws -> OperonCoreCompletedResult {
+    try await runSession(query, outputSchema: nil, validateOutput: nil)
+  }
+
+  /// Executes the core with a typed output contract and app-owned validation.
+  ///
+  /// The closure runs only after Rust has validated structure and evidence. Its
+  /// errors are returned to Rust so it can perform a bounded targeted repair.
+  public func run<Output: Codable & Sendable>(
+    _ query: String,
+    outputSchema: OperonSchema,
+    as outputType: Output.Type = Output.self,
+    validateOutput: (@Sendable (Output) -> [String])? = nil
+  ) async throws -> OperonResult<Output> {
+    let result = try await runSession(
+      query,
+      outputSchema: jsonSchema(from: outputSchema),
+      validateOutput: { rawOutput in
+        do {
+          let data = try JSONSerialization.data(
+            withJSONObject: rawOutput, options: [.fragmentsAllowed])
+          let output = try JSONDecoder().decode(Output.self, from: data)
+          return validateOutput?(output) ?? []
+        } catch {
+          return [
+            "application output could not decode as \(Output.self): \(error.localizedDescription)"
+          ]
+        }
+      }
+    )
+    return try decodeTerminalResult(result.json, outputType: outputType)
+  }
+
+  private func runSession(
+    _ query: String,
+    outputSchema: [String: Any]?,
+    validateOutput: (@Sendable (Any) -> [String])?
+  ) async throws -> OperonCoreCompletedResult {
     let availability = await model.availability()
     guard case .available = availability else {
       if case .unavailable(let reason) = availability {
@@ -33,7 +70,13 @@ public final class OperonCoreDriver {
       throw OperonError.modelUnavailable("unknown")
     }
 
-    let session = try OperonCoreSession(query: query, configJSON: try sessionConfigJSON())
+    let session = try OperonCoreSession(
+      query: query,
+      configJSON: try sessionConfigJSON(
+        outputSchema: outputSchema,
+        hasApplicationValidator: validateOutput != nil
+      )
+    )
     var step = try session.start()
     while true {
       switch step {
@@ -43,7 +86,7 @@ public final class OperonCoreDriver {
         let command = try CoreCommand.decode(json)
         let event: String
         do {
-          event = try await execute(command)
+          event = try await execute(command, validateOutput: validateOutput)
         } catch {
           event = try failureJSON(
             requestID: command.requestID,
@@ -56,7 +99,10 @@ public final class OperonCoreDriver {
     }
   }
 
-  private func execute(_ command: CoreCommand) async throws -> String {
+  private func execute(
+    _ command: CoreCommand,
+    validateOutput: (@Sendable (Any) -> [String])?
+  ) async throws -> String {
     switch command.kind {
     case .generate:
       let response = try await model.generate(
@@ -102,10 +148,26 @@ public final class OperonCoreDriver {
         failure: "memory",
         message: "Memory search is not configured for this Apple host yet."
       )
+    case .validateOutput(let output):
+      guard let validateOutput else {
+        return try failureJSON(
+          requestID: command.requestID,
+          failure: "provider",
+          message: "The Rust core requested application validation, but no validator is configured."
+        )
+      }
+      return try eventJSON(
+        kind: "output_validated",
+        requestID: command.requestID,
+        values: ["errors": validateOutput(output)]
+      )
     }
   }
 
-  private func sessionConfigJSON() throws -> String {
+  private func sessionConfigJSON(
+    outputSchema: [String: Any]?,
+    hasApplicationValidator: Bool
+  ) throws -> String {
     let policy: [String: Any] = [
       "local_only": true,
       "planning": self.policy.planning.rawValue,
@@ -115,7 +177,15 @@ public final class OperonCoreDriver {
       "max_sources": self.policy.maximumSources,
       "request_timeout_ms": 60_000,
     ]
-    return try stringify(["policy": policy, "has_grounding": grounding != nil])
+    var config: [String: Any] = [
+      "policy": policy,
+      "has_grounding": grounding != nil,
+      "has_application_validator": hasApplicationValidator,
+    ]
+    if let outputSchema {
+      config["output_schema"] = outputSchema
+    }
+    return try stringify(config)
   }
 
   private func eventJSON(
@@ -156,6 +226,7 @@ private enum CoreCommandKind {
   case generate
   case retrieve(query: String, limit: Int)
   case searchMemory
+  case validateOutput(Any)
 }
 
 private struct CoreCommand {
@@ -171,6 +242,7 @@ private struct CoreCommand {
     case .generate: return "provider"
     case .retrieve: return "grounding"
     case .searchMemory: return "memory"
+    case .validateOutput: return "provider"
     }
   }
 
@@ -228,6 +300,18 @@ private struct CoreCommand {
       return Self(
         requestID: requestID,
         kind: .searchMemory,
+        messages: [],
+        schema: .string,
+        temperature: 0,
+        maximumResponseTokens: nil
+      )
+    case "validate_output":
+      guard let output = command["output"] else {
+        throw OperonCoreError.invalidResponse("Validate output command is missing output.")
+      }
+      return Self(
+        requestID: requestID,
+        kind: .validateOutput(output),
         messages: [],
         schema: .string,
         temperature: 0,
@@ -313,4 +397,125 @@ private func dictionary(from json: String) throws -> [String: Any] {
 
 private func stringify(_ object: [String: Any]) throws -> String {
   String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+}
+
+private struct CoreTerminalEnvelope: Decodable {
+  let kind: String
+  let result: CoreTerminalResult
+}
+
+private struct CoreTerminalResult: Decodable {
+  let answer: String
+  let output: JSONValue
+  let sources: [OperonSource]
+  let confidence: Double
+  let plan: OperonPlan
+  let trace: [CoreTraceEvent]
+  let wasRepaired: Bool
+
+  enum CodingKeys: String, CodingKey {
+    case answer, output, sources, confidence, plan, trace
+    case wasRepaired = "was_repaired"
+  }
+}
+
+private struct CoreTraceEvent: Decodable {
+  let stage: OperonTraceEvent.Stage
+  let message: String
+  let elapsedMilliseconds: Double
+
+  enum CodingKeys: String, CodingKey {
+    case stage, message
+    case elapsedMilliseconds = "elapsed_ms"
+  }
+}
+
+private struct JSONValue: Decodable {
+  let value: Any
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if container.decodeNil() {
+      value = NSNull()
+    } else if let bool = try? container.decode(Bool.self) {
+      value = bool
+    } else if let number = try? container.decode(Double.self) {
+      value = number
+    } else if let string = try? container.decode(String.self) {
+      value = string
+    } else if let array = try? container.decode([JSONValue].self) {
+      value = array.map(\.value)
+    } else {
+      value = try container.decode([String: JSONValue].self).mapValues(\.value)
+    }
+  }
+}
+
+private func decodeTerminalResult<Output: Codable & Sendable>(
+  _ json: String,
+  outputType: Output.Type
+) throws -> OperonResult<Output> {
+  let envelope = try JSONDecoder().decode(CoreTerminalEnvelope.self, from: Data(json.utf8))
+  guard envelope.kind == "complete" else {
+    throw OperonCoreError.invalidResponse("Operon core returned a non-terminal result envelope.")
+  }
+  let outputData = try JSONSerialization.data(
+    withJSONObject: envelope.result.output.value,
+    options: [.fragmentsAllowed]
+  )
+  let output = try JSONDecoder().decode(Output.self, from: outputData)
+  return OperonResult(
+    answer: envelope.result.answer,
+    output: output,
+    confidence: envelope.result.confidence,
+    sources: envelope.result.sources,
+    plan: envelope.result.plan,
+    trace: envelope.result.trace.map {
+      OperonTraceEvent(
+        stage: $0.stage,
+        message: $0.message,
+        elapsedMilliseconds: $0.elapsedMilliseconds
+      )
+    },
+    wasRepaired: envelope.result.wasRepaired
+  )
+}
+
+private func jsonSchema(from schema: OperonSchema) -> [String: Any] {
+  switch schema {
+  case .object(_, let description, let properties):
+    var value: [String: Any] = [
+      "type": "object",
+      "properties": Dictionary(
+        uniqueKeysWithValues: properties.map { ($0.name, jsonSchema(from: $0.schema)) }
+      ),
+      "required": properties.filter { !$0.isOptional }.map(\.name),
+      "additionalProperties": false,
+    ]
+    if let description { value["description"] = description }
+    return value
+  case .array(let items):
+    return ["type": "array", "items": jsonSchema(from: items)]
+  case .string(let description, let choices):
+    var value: [String: Any] = ["type": "string"]
+    if let description { value["description"] = description }
+    if let choices { value["enum"] = choices }
+    return value
+  case .number(let description, let minimum, let maximum):
+    var value: [String: Any] = ["type": "number"]
+    if let description { value["description"] = description }
+    if let minimum { value["minimum"] = minimum }
+    if let maximum { value["maximum"] = maximum }
+    return value
+  case .integer(let description, let minimum, let maximum):
+    var value: [String: Any] = ["type": "integer"]
+    if let description { value["description"] = description }
+    if let minimum { value["minimum"] = minimum }
+    if let maximum { value["maximum"] = maximum }
+    return value
+  case .boolean(let description):
+    var value: [String: Any] = ["type": "boolean"]
+    if let description { value["description"] = description }
+    return value
+  }
 }

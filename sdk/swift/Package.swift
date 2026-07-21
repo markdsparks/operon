@@ -55,7 +55,7 @@ let package = Package(
     ),
     .executableTarget(
       name: "OperonExpenseDemo",
-      dependencies: ["OperonKit", "OperonFoundationModels"]
+      dependencies: ["OperonCoreDriver", "OperonKit", "OperonFoundationModels"]
     ),
     .testTarget(
       name: "OperonKitTests",

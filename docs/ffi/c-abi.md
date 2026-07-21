@@ -66,7 +66,9 @@ The repository includes `OperonCoreFFI` and `OperonCoreDriver`. Together they
 create this handle, execute Rust `generate` and `retrieve` commands through
 app-owned Swift providers, and resume the core with versioned event envelopes.
 An Apple host can use Apple Foundation Models for generation and its own local
-store for grounding. Memory-command routing is intentionally not enabled yet.
+store for grounding. Typed Swift callers can return application validation
+errors through `output_validated`; Rust uses them for bounded targeted repair.
+Memory-command routing is intentionally not enabled yet.
 The C ABI itself has no database, inference, filesystem, or network authority.
 
 ## Status

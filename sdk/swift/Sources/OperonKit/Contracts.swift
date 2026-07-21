@@ -161,6 +161,24 @@ public struct OperonResult<Output: Sendable>: Sendable {
   public let plan: OperonPlan
   public let trace: [OperonTraceEvent]
   public let wasRepaired: Bool
+
+  public init(
+    answer: String,
+    output: Output,
+    confidence: Double,
+    sources: [OperonSource],
+    plan: OperonPlan,
+    trace: [OperonTraceEvent],
+    wasRepaired: Bool
+  ) {
+    self.answer = answer
+    self.output = output
+    self.confidence = confidence
+    self.sources = sources
+    self.plan = plan
+    self.trace = trace
+    self.wasRepaired = wasRepaired
+  }
 }
 
 public enum OperonError: Error, Sendable, LocalizedError, Equatable {

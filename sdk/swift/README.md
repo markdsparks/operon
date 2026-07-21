@@ -28,7 +28,9 @@ transitions while we preserve that API during migration.
 `OperonCoreDriver` owns its command/event loop and executes `generate` and
 `retrieve` requests through app-owned `OperonModelProvider` and
 `OperonGroundingProvider` implementations. This keeps model inference and
-local data access in the app while moving orchestration into Rust.
+local data access in the app while moving orchestration into Rust. Its typed
+`run` API accepts an `OperonSchema` and `validateOutput` closure: the closure's
+errors become Rust validation events and can trigger a bounded targeted repair.
 
 Build the core first with `make build-c-abi`, then run the bridge test with
 `make test-swift`. macOS links `target/release/liboperon_core.dylib`; iOS uses

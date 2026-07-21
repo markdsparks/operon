@@ -38,6 +38,11 @@ pub enum ExecutionCommand {
         scope: MemoryScope,
         limit: usize,
     },
+    ValidateOutput {
+        protocol_version: String,
+        request_id: u64,
+        output: Value,
+    },
 }
 
 impl ExecutionCommand {
@@ -45,7 +50,8 @@ impl ExecutionCommand {
         match self {
             Self::Generate { request_id, .. }
             | Self::Retrieve { request_id, .. }
-            | Self::SearchMemory { request_id, .. } => *request_id,
+            | Self::SearchMemory { request_id, .. }
+            | Self::ValidateOutput { request_id, .. } => *request_id,
         }
     }
 }
@@ -78,6 +84,11 @@ pub enum ExecutionEvent {
         request_id: u64,
         records: Vec<MemoryRecord>,
     },
+    OutputValidated {
+        protocol_version: String,
+        request_id: u64,
+        errors: Vec<String>,
+    },
     CommandFailed {
         protocol_version: String,
         request_id: u64,
@@ -92,6 +103,7 @@ impl ExecutionEvent {
             Self::GenerationCompleted { request_id, .. }
             | Self::RetrievalCompleted { request_id, .. }
             | Self::MemorySearchCompleted { request_id, .. }
+            | Self::OutputValidated { request_id, .. }
             | Self::CommandFailed { request_id, .. } => *request_id,
         }
     }
@@ -105,6 +117,9 @@ impl ExecutionEvent {
                 protocol_version, ..
             }
             | Self::MemorySearchCompleted {
+                protocol_version, ..
+            }
+            | Self::OutputValidated {
                 protocol_version, ..
             }
             | Self::CommandFailed {
@@ -154,6 +169,9 @@ pub struct SessionConfig {
     pub policy: ExecutionPolicy,
     pub has_grounding: bool,
     pub output_schema: Option<Value>,
+    /// When true, the host must validate the application output before the
+    /// session completes. Returned errors are eligible for targeted repair.
+    pub has_application_validator: bool,
 }
 
 #[derive(Debug)]
@@ -163,6 +181,7 @@ enum Pending {
     Retrieval(u64),
     Answer(u64),
     Repair(u64),
+    ApplicationValidation(u64),
     Complete,
 }
 
@@ -176,6 +195,7 @@ pub struct ExecutionSession {
     sources: Vec<Source>,
     repair_attempts: usize,
     was_repaired: bool,
+    pending_payload: Option<AnswerPayload>,
 }
 
 impl ExecutionSession {
@@ -201,6 +221,7 @@ impl ExecutionSession {
             sources: Vec::new(),
             repair_attempts: 0,
             was_repaired: false,
+            pending_payload: None,
         })
     }
 
@@ -240,7 +261,8 @@ impl ExecutionSession {
             Pending::Plan(id)
             | Pending::Retrieval(id)
             | Pending::Answer(id)
-            | Pending::Repair(id) => id,
+            | Pending::Repair(id)
+            | Pending::ApplicationValidation(id) => id,
             Pending::None => {
                 return Err(OperonError::InvalidRequest(
                     "execution session has not yielded a command".into(),
@@ -299,6 +321,9 @@ impl ExecutionSession {
                     usage_data(&response),
                 );
                 self.accept_repair(response)
+            }
+            (Pending::ApplicationValidation(_), ExecutionEvent::OutputValidated { errors, .. }) => {
+                self.accept_application_validation(errors)
             }
             _ => Err(OperonError::InvalidRequest(
                 "event kind does not match outstanding command".into(),
@@ -458,7 +483,7 @@ impl ExecutionSession {
             if !errors.is_empty() {
                 return Err(OperonError::Validation(errors));
             }
-            return Ok(self.complete(payload));
+            return self.validate_with_host_or_complete(payload);
         }
 
         let plan = self.plan.as_ref().expect("plan exists");
@@ -492,6 +517,51 @@ impl ExecutionSession {
                 json!({ "errors": errors }),
             );
         }
+        if errors.is_empty() {
+            return self.validate_with_host_or_complete(payload);
+        }
+        if self.repair_attempts >= self.config.policy.max_repair_attempts {
+            return Err(OperonError::Validation(errors));
+        }
+        let candidate = serde_json::to_value(&payload)
+            .map_err(|error| OperonError::InvalidModelOutput(error.to_string()))?;
+        Ok(self.repair_command(candidate, errors))
+    }
+
+    fn validate_with_host_or_complete(
+        &mut self,
+        payload: AnswerPayload,
+    ) -> OperonResult<ExecutionStep> {
+        if !self.config.has_application_validator {
+            return Ok(self.complete(payload));
+        }
+        let output = payload.output.clone().ok_or_else(|| {
+            OperonError::Validation(vec![
+                "application validation requires a configured output schema".into(),
+            ])
+        })?;
+        self.pending_payload = Some(payload);
+        let request_id = self.allocate_request_id();
+        self.pending = Pending::ApplicationValidation(request_id);
+        Ok(ExecutionStep::Command(ExecutionCommand::ValidateOutput {
+            protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+            request_id,
+            output,
+        }))
+    }
+
+    fn accept_application_validation(
+        &mut self,
+        errors: Vec<String>,
+    ) -> OperonResult<ExecutionStep> {
+        let payload = self.pending_payload.take().ok_or_else(|| {
+            OperonError::InvalidRequest("application validation has no pending payload".into())
+        })?;
+        self.trace.add(
+            Stage::Validate,
+            "validated application output",
+            json!({ "errors": errors }),
+        );
         if errors.is_empty() {
             return Ok(self.complete(payload));
         }

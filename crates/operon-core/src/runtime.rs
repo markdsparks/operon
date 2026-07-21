@@ -74,6 +74,7 @@ impl<'a> OperonRuntime<'a> {
                 policy: self.policy.clone(),
                 has_grounding: self.grounding.is_some(),
                 output_schema: self.output_schema.clone(),
+                has_application_validator: false,
             },
         )?;
         let mut step = session.start()?;
@@ -111,6 +112,11 @@ impl<'a> OperonRuntime<'a> {
                     return Err(OperonError::Memory(
                         "synchronous runtime does not yet host durable-memory search".into(),
                     ));
+                }
+                ExecutionStep::Command(ExecutionCommand::ValidateOutput { .. }) => {
+                    return Err(OperonError::Validation(vec![
+                        "synchronous runtime does not host application validation".into(),
+                    ]));
                 }
                 ExecutionStep::Complete(result) => return Ok(result.into_response()),
             };

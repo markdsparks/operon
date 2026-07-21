@@ -173,3 +173,29 @@ func applicationValidatorTriggersTargetedRepair() async throws {
     #expect(await provider.requestCount == 1)
   }
 #endif
+
+#if os(macOS)
+  @Test
+  func rustCoreDriverRepairsTypedOutputAfterApplicationValidation() async throws {
+    let provider = ScriptedProvider([
+      #"{"answer":"The amount is $48.","confidence":0.9,"used_source_ids":[],"output":{"decision":"partial","amount":48}}"#,
+      #"{"answer":"The amount is $68.","confidence":0.9,"used_source_ids":[],"output":{"decision":"partial","amount":68}}"#,
+    ])
+    let driver = OperonCoreDriver(
+      model: provider,
+      policy: OperonPolicy(planning: .never, maximumRepairAttempts: 1)
+    )
+
+    let result: OperonResult<Decision> = try await driver.run(
+      "Determine the allowed amount.",
+      outputSchema: decisionSchema,
+      validateOutput: { decision in
+        decision.amount == 68 ? [] : ["amount must equal 68"]
+      }
+    )
+
+    #expect(result.output == Decision(decision: "partial", amount: 68))
+    #expect(result.wasRepaired)
+    #expect(await provider.requestCount == 2)
+  }
+#endif

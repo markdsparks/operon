@@ -1,4 +1,5 @@
 import Foundation
+import OperonCoreDriver
 import OperonFoundationModels
 import OperonKit
 
@@ -56,7 +57,7 @@ private enum OperonExpenseDemo {
   static func main() async {
     let provider = AppleFoundationModelsProvider()
     let expense = Expense(foodSubtotal: 68, alcoholSubtotal: 20)
-    let operon = Operon(
+    let operon = OperonCoreDriver(
       model: provider,
       grounding: ExpenseDecisionGrounding(expense: expense),
       policy: OperonPolicy(planning: .always, maximumRepairAttempts: 2)

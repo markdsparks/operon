@@ -54,6 +54,17 @@
       },
       "required": ["kind", "protocol_version", "request_id", "query", "scope", "limit"],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "validate_output" },
+        "protocol_version": { "const": "0.1" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "output": {}
+      },
+      "required": ["kind", "protocol_version", "request_id", "output"],
+      "additionalProperties": false
     }
   ]
 }

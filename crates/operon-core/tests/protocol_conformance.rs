@@ -6,6 +6,7 @@ use operon_core::{
     SessionConfig, Stage, Strategy,
 };
 use serde::Deserialize;
+use serde_json::json;
 
 #[derive(Deserialize)]
 struct Fixture {
@@ -30,6 +31,7 @@ fn replays_refund_grounding_repair_fixture() {
             },
             has_grounding: true,
             output_schema: None,
+            has_application_validator: false,
         },
     )
     .unwrap();
@@ -96,6 +98,93 @@ fn rejects_an_event_for_a_different_request() {
     );
 }
 
+#[test]
+fn application_validation_errors_trigger_a_targeted_repair() {
+    let mut session = ExecutionSession::new(
+        "Decide whether the expense is allowed.",
+        SessionConfig {
+            policy: ExecutionPolicy {
+                planning: Strategy::Never,
+                ..ExecutionPolicy::default()
+            },
+            has_grounding: false,
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": { "decision": { "type": "string" } },
+                "required": ["decision"],
+                "additionalProperties": false
+            })),
+            has_application_validator: true,
+        },
+    )
+    .unwrap();
+
+    let first_id = match session.start().unwrap() {
+        ExecutionStep::Command(ExecutionCommand::Generate { request_id, .. }) => request_id,
+        _ => panic!("expected initial generation"),
+    };
+    let validation_id = match session
+        .resume(ExecutionEvent::GenerationCompleted {
+            protocol_version: "0.1".into(),
+            request_id: first_id,
+            response: operon_core::GenerationResponse::text(
+                r#"{"answer":"Deny.","confidence":0.9,"used_source_ids":[],"output":{"decision":"deny"}}"#,
+            ),
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::ValidateOutput {
+            request_id, output, ..
+        }) => {
+            assert_eq!(output["decision"], "deny");
+            request_id
+        }
+        _ => panic!("expected application validation"),
+    };
+    let repair_id = match session
+        .resume(ExecutionEvent::OutputValidated {
+            protocol_version: "0.1".into(),
+            request_id: validation_id,
+            errors: vec!["decision must be partial when alcohol is present".into()],
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::Generate {
+            request_id, stage, ..
+        }) => {
+            assert_eq!(stage, Stage::Repair);
+            request_id
+        }
+        _ => panic!("expected repair generation"),
+    };
+    let final_validation_id = match session
+        .resume(ExecutionEvent::GenerationCompleted {
+            protocol_version: "0.1".into(),
+            request_id: repair_id,
+            response: operon_core::GenerationResponse::text(
+                r#"{"answer":"Allow food only.","confidence":0.9,"used_source_ids":[],"output":{"decision":"partial"}}"#,
+            ),
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::ValidateOutput { request_id, .. }) => request_id,
+        _ => panic!("expected final application validation"),
+    };
+    let result = match session
+        .resume(ExecutionEvent::OutputValidated {
+            protocol_version: "0.1".into(),
+            request_id: final_validation_id,
+            errors: vec![],
+        })
+        .unwrap()
+    {
+        ExecutionStep::Complete(result) => result,
+        _ => panic!("expected completion"),
+    };
+    assert!(result.was_repaired);
+    assert_eq!(result.output.unwrap()["decision"], "partial");
+}
+
 fn load_fixture(name: &str) -> Fixture {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../conformance/cases")
@@ -109,6 +198,7 @@ fn command_label(command: &ExecutionCommand) -> String {
         ExecutionCommand::Generate { stage, .. } => format!("generate:{}", stage_name(*stage)),
         ExecutionCommand::Retrieve { .. } => "retrieve".into(),
         ExecutionCommand::SearchMemory { .. } => "search_memory".into(),
+        ExecutionCommand::ValidateOutput { .. } => "validate_output".into(),
     }
 }
 
@@ -127,6 +217,7 @@ fn event_request_id(event: &ExecutionEvent) -> u64 {
         ExecutionEvent::GenerationCompleted { request_id, .. }
         | ExecutionEvent::RetrievalCompleted { request_id, .. }
         | ExecutionEvent::MemorySearchCompleted { request_id, .. }
+        | ExecutionEvent::OutputValidated { request_id, .. }
         | ExecutionEvent::CommandFailed { request_id, .. } => *request_id,
     }
 }

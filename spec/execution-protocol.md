@@ -55,6 +55,15 @@ The protocol defines read access only. Applications write, supersede, tombstone,
 export, and delete records through their storage adapter. A model cannot acquire
 durable-memory write authority by emitting text.
 
+### Validate output
+
+Requests application-owned validation of the candidate `output` value after
+the core has completed its structural and evidence checks. Hosts return a list
+of actionable error strings. Empty errors complete the session; non-empty
+errors are supplied to a bounded targeted-repair command. This preserves the
+boundary between deterministic business rules in the app and model-generated
+interpretation.
+
 ## Events
 
 ### Generation completed
@@ -68,6 +77,11 @@ Returns ordered sources for a matching Retrieve command.
 ### Memory search completed
 
 Returns ordered `MemoryRecord` values for a matching Search memory command.
+
+### Output validated
+
+Returns zero or more application validation errors for a matching Validate
+output command.
 
 ### Command failed
 
