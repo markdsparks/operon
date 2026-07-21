@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 
+@testable import OperonCoreDriver
 @testable import OperonCoreFFI
 @testable import OperonKit
 
@@ -152,5 +153,23 @@ func applicationValidatorTriggersTargetedRepair() async throws {
       return
     }
     #expect(resultJSON.contains("Four."))
+  }
+#endif
+
+#if os(macOS)
+  @Test
+  func rustCoreDriverExecutesGroundingAndGenerationLocally() async throws {
+    let provider = ScriptedProvider([
+      #"{"answer":"The allowed amount is $68 [S1]","confidence":0.9,"used_source_ids":["S1"]}"#
+    ])
+    let driver = OperonCoreDriver(
+      model: provider,
+      grounding: RecordingGrounding(),
+      policy: OperonPolicy(planning: .never)
+    )
+
+    let result = try await driver.run("Determine the allowed amount.")
+    #expect(result.json.contains("The allowed amount is $68"))
+    #expect(await provider.requestCount == 1)
   }
 #endif

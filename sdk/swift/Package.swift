@@ -13,6 +13,7 @@ let package = Package(
     // Development-only bridge to the locally built macOS Rust library. iOS
     // distribution will use the same ABI packaged as an XCFramework.
     .library(name: "OperonCoreFFI", targets: ["OperonCoreFFI"]),
+    .library(name: "OperonCoreDriver", targets: ["OperonCoreDriver"]),
     .library(
       name: "OperonFoundationModels",
       targets: ["OperonFoundationModels"]
@@ -21,8 +22,15 @@ let package = Package(
   ],
   targets: [
     .target(name: "OperonKit"),
+    .binaryTarget(
+      name: "OperonCoreApple",
+      path: "../../artifacts/OperonCore.xcframework"
+    ),
     .target(
       name: "OperonCoreFFI",
+      dependencies: [
+        .target(name: "OperonCoreApple", condition: .when(platforms: [.iOS]))
+      ],
       linkerSettings: [
         .unsafeFlags(
           [
@@ -38,8 +46,12 @@ let package = Package(
       ]
     ),
     .target(
+      name: "OperonCoreDriver",
+      dependencies: ["OperonCoreFFI", "OperonKit"]
+    ),
+    .target(
       name: "OperonFoundationModels",
-      dependencies: ["OperonKit"]
+      dependencies: ["OperonCoreDriver", "OperonKit"]
     ),
     .executableTarget(
       name: "OperonExpenseDemo",
@@ -47,7 +59,7 @@ let package = Package(
     ),
     .testTarget(
       name: "OperonKitTests",
-      dependencies: ["OperonKit", "OperonCoreFFI"]
+      dependencies: ["OperonKit", "OperonCoreDriver", "OperonCoreFFI"]
     ),
   ]
 )

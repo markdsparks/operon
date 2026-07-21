@@ -147,9 +147,10 @@ control scheduling and platform services.
 
 The Swift developer preview proves the native API and real on-device provider
 boundary. It currently implements the vertical-slice state transitions in pure
-Swift. A separate, macOS-only `OperonCoreFFI` developer bridge now drives the
-Rust command/event state machine through the C ABI while that public API is
-migrated; iOS packaging remains the next distribution step.
+Swift. `OperonCoreFFI` and `OperonCoreDriver` now drive Rust command/event
+sessions through the C ABI using app-owned Swift model and grounding providers;
+the generated XCFramework links this path for iOS development. The existing
+public `OperonKit` API remains available while that migration continues.
 
 The experimental C ABI is now available for native hosts. It exposes opaque
 session handles and versioned JSON commands/events while leaving inference,

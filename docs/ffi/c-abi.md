@@ -62,15 +62,17 @@ host performs that native operation
 Commands, events, and completed results retain their versioned JSON protocol
 shape. The ABI only adds an outer `{kind: command|complete}` envelope.
 
-The repository includes `OperonCoreFFI`, a small macOS Swift developer bridge
-that creates this handle, returns command envelopes, and accepts event
-envelopes. An Apple host executes `generate` with Apple Foundation Models and
-`search_memory` with its local store, then resumes the core. The C ABI itself
-has no database, inference, filesystem, or network authority.
+The repository includes `OperonCoreFFI` and `OperonCoreDriver`. Together they
+create this handle, execute Rust `generate` and `retrieve` commands through
+app-owned Swift providers, and resume the core with versioned event envelopes.
+An Apple host can use Apple Foundation Models for generation and its own local
+store for grounding. Memory-command routing is intentionally not enabled yet.
+The C ABI itself has no database, inference, filesystem, or network authority.
 
 ## Status
 
 This is an experimental `0.1` ABI. Its handle lifecycle and JSON envelope are
-covered by Rust and macOS Swift round-trip tests. The Swift bridge links a local
-macOS dynamic library for development; an XCFramework, iOS integration, and a
-cross-language replay suite remain before a stable ABI release.
+covered by Rust and Swift command-loop tests. The Swift bridge links a local
+macOS dynamic library for development and a locally generated iOS XCFramework.
+Release packaging and a cross-language replay suite remain before a stable ABI
+release.

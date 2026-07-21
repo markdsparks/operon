@@ -5,7 +5,7 @@ import Foundation
 /// This target links `target/release/liboperon_core.dylib` from this repository.
 /// Package the static core library in an XCFramework before using it in an iOS
 /// application.
-#if os(macOS)
+#if os(macOS) || os(iOS)
   public enum OperonCoreStep: Sendable, Equatable {
     /// A command for the host to execute. The payload is the ABI JSON envelope.
     case command(json: String)
