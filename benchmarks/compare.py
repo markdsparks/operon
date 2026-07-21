@@ -21,6 +21,7 @@ class Profile:
     model: str
     base_url: str
     api_key_env: str | None = None
+    allow_remote: bool = False
     input_cost_per_million: float = 0
     output_cost_per_million: float = 0
 
@@ -73,6 +74,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         command = [sys.executable, "-m", "benchmarks.run", "--model", profile.model, "--base-url", profile.base_url, "--profile", profile.name, "--repetitions", str(args.repetitions), "--output", str(output)]
         if profile.api_key_env:
             command.extend(("--api-key-env", profile.api_key_env))
+        if profile.allow_remote:
+            command.append("--allow-remote")
         for case_id in args.case_ids or []:
             command.extend(("--case", case_id))
         for config in args.configs or []:

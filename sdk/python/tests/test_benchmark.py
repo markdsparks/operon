@@ -6,7 +6,7 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
-from benchmarks.compare import Profile, comparison, estimated_cost
+from benchmarks.compare import Profile, comparison, estimated_cost, load_profiles
 from benchmarks.matrix import aggregate_matrix, model_slug
 from benchmarks.run import (
     PROTOCOL_VERSION,
@@ -151,6 +151,32 @@ class BenchmarkTests(unittest.TestCase):
             result["cloud-reference"]["summary"]["operon_full"]["estimated_average_cost_usd"],
             0.004,
         )
+
+    def test_remote_profile_requires_explicit_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profiles.json"
+            path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "name": "default",
+                            "model": "local",
+                            "base_url": "http://127.0.0.1:11434/v1",
+                        },
+                        {
+                            "name": "remote-reference",
+                            "model": "cloud",
+                            "base_url": "https://example.invalid/v1",
+                            "allow_remote": True,
+                        },
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            default, remote = load_profiles(path)
+
+        self.assertFalse(default.allow_remote)
+        self.assertTrue(remote.allow_remote)
 
 
 if __name__ == "__main__":

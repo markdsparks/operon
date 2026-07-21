@@ -320,12 +320,20 @@ def run_operon(
     case: Case,
     configuration: str,
     repetition: int,
+    *,
+    allow_remote: bool = False,
 ) -> RunRecord:
     verification = "never" if configuration == "operon_unverified" else "adaptive"
     runtime = Operon(
         provider,
         grounding=LocalDocuments(case.documents),
-        policy=Policy(planning="always", verification=verification),
+        # Local-only is the product default. A benchmark can opt into a remote
+        # reference only through the explicit command-line/profile switch.
+        policy=Policy(
+            local_only=not allow_remote,
+            planning="always",
+            verification=verification,
+        ),
     )
     started = monotonic()
     response = runtime.run(case.query)
@@ -433,6 +441,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--profile", default="local")
     parser.add_argument("--api-key-env")
+    parser.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="Permit the Operon configurations to use a non-local inference provider.",
+    )
     return parser
 
 
@@ -475,7 +488,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if configuration in {"question_only", "all_context"}:
                         record = run_direct(provider, case, configuration, repetition)
                     else:
-                        record = run_operon(provider, case, configuration, repetition)
+                        record = run_operon(
+                            provider,
+                            case,
+                            configuration,
+                            repetition,
+                            allow_remote=args.allow_remote,
+                        )
                 except Exception as exc:  # Preserve the matrix when one cell fails.
                     record = RunRecord(
                         timestamp=datetime.now(UTC).isoformat(),

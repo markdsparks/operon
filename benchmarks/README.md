@@ -94,7 +94,9 @@ run before committing to the full matrix.
 Use a profile manifest to compare local and cloud models against the same cases,
 authorized documents, output contracts, and scoring rules. Start from
 `benchmarks/profiles.example.json`; credentials are named by environment
-variable and never stored in the manifest or result files.
+variable and never stored in the manifest or result files. A remote profile must
+also explicitly set `"allow_remote": true`; this is limited to the benchmark
+process and does not change Operon's privacy-first product default.
 
 ```bash
 export OPERON_CLOUD_API_KEY=...
