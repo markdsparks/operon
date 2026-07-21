@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://operon.dev/spec/0.1/execution-command.schema.json",
+  "title": "Operon execution command",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "generate" },
+        "protocol_version": { "const": "0.1" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "stage": {
+          "enum": ["classify", "ground", "generate", "validate", "repair"]
+        },
+        "request": { "type": "object" }
+      },
+      "required": ["kind", "protocol_version", "request_id", "stage", "request"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "retrieve" },
+        "protocol_version": { "const": "0.1" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "query": { "type": "string", "minLength": 1 },
+        "limit": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["kind", "protocol_version", "request_id", "query", "limit"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "search_memory" },
+        "protocol_version": { "const": "0.1" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "query": { "type": "string", "minLength": 1 },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "namespace": { "type": "string", "minLength": 1 },
+            "subject": { "type": ["string", "null"] },
+            "allowed_sensitivities": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "enum": ["private", "internal", "public"] }
+            }
+          },
+          "required": ["namespace", "allowed_sensitivities"],
+          "additionalProperties": false
+        },
+        "limit": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["kind", "protocol_version", "request_id", "query", "scope", "limit"],
+      "additionalProperties": false
+    }
+  ]
+}

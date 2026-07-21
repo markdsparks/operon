@@ -1,0 +1,11 @@
+{
+  "name": "superseded and expired memories are not returned",
+  "operations": [
+    {"op": "put", "record": {"id": "M1", "namespace": "user-a", "kind": "decision", "content": "Customer selected the Free plan.", "authority": "application_verified"}},
+    {"op": "put", "record": {"id": "M2", "namespace": "user-a", "kind": "decision", "content": "Customer selected the Pro plan.", "authority": "application_verified", "supersedes": "M1"}},
+    {"op": "put", "record": {"id": "M3", "namespace": "user-a", "kind": "fact", "content": "The old plan was Basic.", "authority": "application_verified", "valid_until": "2000-01-01T00:00:00+00:00"}}
+  ],
+  "searches": [
+    {"query": "Which plan did the customer select?", "scope": {"namespace": "user-a"}, "expected_ids": ["M2"]}
+  ]
+}

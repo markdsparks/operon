@@ -1,0 +1,15 @@
+[package]
+name = "operon-core"
+description = "Portable cognitive runtime contracts and execution engine for Operon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

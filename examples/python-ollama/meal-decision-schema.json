@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["full", "partial", "deny"],
+      "description": "Use full only when every claimed item is reimbursable, partial when some items are excluded, and deny when nothing is reimbursable."
+    },
+    "reimbursable_amount_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "excluded_items": {
+      "type": "array",
+      "description": "Every claimed item excluded by policy; an empty list means nothing was excluded.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["decision", "reimbursable_amount_usd", "excluded_items"],
+  "additionalProperties": false
+}

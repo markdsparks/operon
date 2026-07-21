@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "operon-runtime"
+version = "0.1.0"
+description = "A local-first cognitive runtime for small language models"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Operon contributors" }]
+keywords = ["slm", "local-ai", "agents", "grounding", "llm"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = []
+
+[project.scripts]
+operon = "operon.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/operon"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

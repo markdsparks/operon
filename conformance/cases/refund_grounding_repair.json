@@ -1,0 +1,61 @@
+{
+  "name": "planner cannot veto grounding and invalid citation is repaired",
+  "query": "Analyze whether this refund request qualifies.",
+  "events": [
+    {
+      "kind": "generation_completed",
+      "protocol_version": "0.1",
+      "request_id": 1,
+      "response": {
+        "text": "{\"intent\":\"Determine refund eligibility\",\"subquestions\":[\"Is there a receipt?\"],\"needs_grounding\":false,\"answer_requirements\":[\"Apply policy\"]}",
+        "prompt_tokens": 40,
+        "completion_tokens": 25,
+        "finish_reason": "stop"
+      }
+    },
+    {
+      "kind": "retrieval_completed",
+      "protocol_version": "0.1",
+      "request_id": 2,
+      "sources": [
+        {
+          "id": "S1",
+          "path": "refunds.md",
+          "text": "Refunds are allowed within 30 days with a receipt.",
+          "score": 1.0
+        }
+      ]
+    },
+    {
+      "kind": "generation_completed",
+      "protocol_version": "0.1",
+      "request_id": 3,
+      "response": {
+        "text": "{\"answer\":\"It qualifies [S9].\",\"confidence\":0.8,\"used_source_ids\":[\"S9\"]}",
+        "prompt_tokens": 80,
+        "completion_tokens": 20,
+        "finish_reason": "stop"
+      }
+    },
+    {
+      "kind": "generation_completed",
+      "protocol_version": "0.1",
+      "request_id": 4,
+      "response": {
+        "text": "{\"answer\":\"It qualifies within 30 days with a receipt [S1].\",\"confidence\":0.9,\"used_source_ids\":[\"S1\"]}",
+        "prompt_tokens": 100,
+        "completion_tokens": 25,
+        "finish_reason": "stop"
+      }
+    }
+  ],
+  "expected_commands": [
+    "generate:classify",
+    "retrieve",
+    "generate:generate",
+    "generate:repair"
+  ],
+  "expected_answer": "It qualifies within 30 days with a receipt [S1].",
+  "expected_source_ids": ["S1"],
+  "expected_was_repaired": true
+}

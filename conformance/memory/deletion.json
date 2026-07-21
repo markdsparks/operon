@@ -1,0 +1,10 @@
+{
+  "name": "tombstoned memories are immediately excluded from retrieval",
+  "operations": [
+    {"op": "put", "record": {"id": "M1", "namespace": "user-a", "kind": "fact", "content": "The renewal date is Friday.", "authority": "application_verified"}},
+    {"op": "tombstone", "id": "M1"}
+  ],
+  "searches": [
+    {"query": "What is the renewal date?", "scope": {"namespace": "user-a"}, "expected_ids": []}
+  ]
+}

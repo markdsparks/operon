@@ -1,0 +1,424 @@
+[
+  {
+    "id": "refund_final_sale",
+    "title": "Discounted merchandise is final sale",
+    "expected_verdict": "deny",
+    "query": "Analyze whether a customer qualifies for a refund after buying a discounted wireless keyboard 10 days ago. The box is unopened, the original receipt is available, and the customer simply changed their mind. Explain which company rule controls.",
+    "documents": [
+      "fixtures/refund_final_sale/policy.md",
+      "fixtures/refund_final_sale/request.md"
+    ],
+    "required_any": [
+      ["does not qualify", "not eligible", "cannot be returned", "final sale"],
+      ["discounted", "final sale"]
+    ],
+    "forbidden_any": [
+      "qualifies for a refund",
+      "eligible for a refund",
+      "approve the refund"
+    ],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "warranty_liquid",
+    "title": "Liquid damage is excluded from warranty",
+    "expected_verdict": "deny",
+    "query": "Evaluate whether a six-month-old phone is covered by the product warranty after it stopped working immediately following a water spill. Explain the controlling warranty rule.",
+    "documents": [
+      "fixtures/warranty_liquid/warranty.md",
+      "fixtures/warranty_liquid/incident.md"
+    ],
+    "required_any": [
+      ["not covered", "excluded", "does not cover", "not eligible"],
+      ["liquid", "water"]
+    ],
+    "forbidden_any": [
+      "covered by the warranty",
+      "qualifies for warranty"
+    ],
+    "expected_sources": ["warranty.md"]
+  },
+  {
+    "id": "travel_business",
+    "title": "Short flight does not qualify for business class",
+    "expected_verdict": "deny",
+    "query": "Determine whether a business-class ticket for a four-hour flight is reimbursable when the employee did not receive VP approval. Explain which travel-policy rule controls.",
+    "documents": [
+      "fixtures/travel_business/policy.md",
+      "fixtures/travel_business/expense.md"
+    ],
+    "required_any": [
+      ["not reimbursable", "will not be reimbursed", "not eligible", "economy class"],
+      ["six hours", "6 hours", "vp approval"]
+    ],
+    "forbidden_any": [
+      "is reimbursable",
+      "eligible for reimbursement"
+    ],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "safety_e17",
+    "title": "E17 alarm requires shutdown",
+    "expected_verdict": "action",
+    "query": "A packaging machine displays alarm E17 during operation. Determine what the operator should do now and whether the machine should be restarted before a technician arrives.",
+    "documents": [
+      "fixtures/safety_e17/manual.md",
+      "fixtures/safety_e17/incident.md"
+    ],
+    "required_any": [
+      ["shut down", "power off", "stop the machine"],
+      ["do not restart", "must not restart", "should not be restarted"]
+    ],
+    "forbidden_any": [
+      "restart the machine and continue",
+      "safe to restart"
+    ],
+    "expected_sources": ["manual.md"]
+  },
+  {
+    "id": "retention_unknown",
+    "title": "Backup retention is not specified",
+    "expected_verdict": "insufficient",
+    "query": "Determine exactly how long encrypted customer backups must be retained. The only available governance document describes operational log retention. Give a definitive duration only if the documents support one.",
+    "documents": [
+      "fixtures/retention_unknown/retention.md",
+      "fixtures/retention_unknown/request.md"
+    ],
+    "required_any": [
+      ["not specified", "do not specify", "cannot determine", "insufficient", "does not state", "does not define", "no definitive", "no policy"]
+    ],
+    "forbidden_any": [
+      "backups must be retained for 30 days",
+      "30-day backup retention"
+    ],
+    "expected_sources": ["retention.md"]
+  },
+  {
+    "id": "access_contractor_admin",
+    "title": "Contractor cannot receive standard production admin access",
+    "expected_verdict": "deny",
+    "query": "Evaluate whether a contractor may receive production administrator access after completing annual security training and registering a hardware security key. No incident has been declared.",
+    "documents": ["fixtures/access_control/policy.md", "fixtures/access_control/handbook.md"],
+    "required_any": [
+      ["may not", "cannot receive", "not eligible", "must not receive"],
+      ["contractor", "temporary worker"]
+    ],
+    "forbidden_any": ["contractor is eligible", "may receive production administrator access"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "access_employee_no_key",
+    "title": "Employee without a hardware key cannot receive admin access",
+    "expected_verdict": "deny",
+    "query": "Determine whether a permanent employee who completed annual security training but has not registered a hardware security key may receive production administrator access.",
+    "documents": ["fixtures/access_control/policy.md", "fixtures/access_control/handbook.md"],
+    "required_any": [
+      ["may not", "cannot receive", "not eligible", "must register"],
+      ["hardware security key", "hardware key"]
+    ],
+    "forbidden_any": ["may receive production administrator access now", "is eligible for production administrator access"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "access_break_glass",
+    "title": "Incident commander may grant temporary break-glass access",
+    "expected_verdict": "allow",
+    "query": "During a declared incident, the incident commander authorizes a named contractor responder for break-glass administrator access. Determine whether access is allowed and when it expires.",
+    "documents": ["fixtures/access_control/policy.md", "fixtures/access_control/handbook.md"],
+    "required_any": [
+      ["allowed", "may authorize", "may receive", "break-glass access"],
+      ["60 minutes", "expires after 60"]
+    ],
+    "forbidden_any": ["break-glass access is prohibited", "cannot receive break-glass"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "meal_individual_alcohol",
+    "title": "Alcohol must be removed from an individual meal claim",
+    "expected_verdict": "partial",
+    "query": "An employee submits one travel-meal receipt containing $68 of food and $20 of alcohol. It is their only meal expense that day. Determine the reimbursable amount and explain the controlling rules.",
+    "documents": ["fixtures/meal_expense/policy.md", "fixtures/meal_expense/card_guide.md"],
+    "required_any": [
+      ["$68", "68 dollars", "68 is reimbursable"],
+      ["alcohol is never reimbursable", "alcohol is not reimbursable", "exclude the $20"]
+    ],
+    "forbidden_any": ["$88 is reimbursable", "reimburse the full $88"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "meal_client_520",
+    "title": "Compliant client dinner below the approval threshold",
+    "expected_verdict": "allow",
+    "query": "A client dinner costs $520 for four attendees. The report includes all attendee names and the business purpose. Determine whether the dinner is reimbursable without written director preapproval.",
+    "documents": ["fixtures/meal_expense/policy.md", "fixtures/meal_expense/card_guide.md"],
+    "required_any": [
+      ["is reimbursable", "may be reimbursed", "reimbursable without"],
+      ["$130 per attendee", "130 per attendee", "below $150", "does not exceed $600"]
+    ],
+    "forbidden_any": ["not reimbursable", "director approval is required"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "meal_client_700_no_approval",
+    "title": "Client dinner over $600 requires advance approval",
+    "expected_verdict": "deny",
+    "query": "A client dinner costs $700 for five attendees and includes the attendee list and business purpose, but no written director approval was obtained before the dinner. Determine whether it is reimbursable.",
+    "documents": ["fixtures/meal_expense/policy.md", "fixtures/meal_expense/card_guide.md"],
+    "required_any": [
+      ["not reimbursable", "cannot be reimbursed", "requires written director approval"],
+      ["exceeds $600", "over $600", "director approval"]
+    ],
+    "forbidden_any": ["is reimbursable", "may be reimbursed without approval"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "leave_grandparent",
+    "title": "Grandparent bereavement receives three paid days",
+    "expected_verdict": "duration",
+    "query": "Determine how many paid bereavement workdays an employee receives after the death of a grandparent and explain the family classification.",
+    "documents": ["fixtures/leave_policy/policy.md", "fixtures/leave_policy/calendar.md"],
+    "required_any": [
+      ["three paid", "3 paid", "three workdays", "3 workdays"],
+      ["extended family"]
+    ],
+    "forbidden_any": ["five paid workdays", "5 paid workdays"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "leave_parent",
+    "title": "Parent bereavement receives five paid days",
+    "expected_verdict": "duration",
+    "query": "Determine how many paid bereavement workdays an employee receives after the death of a parent and explain the family classification.",
+    "documents": ["fixtures/leave_policy/policy.md", "fixtures/leave_policy/calendar.md"],
+    "required_any": [
+      ["five paid", "5 paid", "five workdays", "5 workdays"],
+      ["immediate family"]
+    ],
+    "forbidden_any": ["three paid workdays", "3 paid workdays"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "leave_parental_eight_months",
+    "title": "Employee with eight months service receives six weeks",
+    "expected_verdict": "duration",
+    "query": "An employee will have completed eight months of service on the date their child is born. Determine how many paid weeks of parental leave they receive.",
+    "documents": ["fixtures/leave_policy/policy.md", "fixtures/leave_policy/calendar.md"],
+    "required_any": [
+      ["six paid weeks", "6 paid weeks", "six weeks", "6 weeks"],
+      ["less than 12 months", "has not completed 12 months", "eight months"]
+    ],
+    "forbidden_any": ["12 paid weeks", "twelve paid weeks"],
+    "accepted_exact": ["6", "six"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "shipping_standalone_battery",
+    "title": "Standalone lithium battery cannot travel by air",
+    "expected_verdict": "deny",
+    "query": "A customer requests next-day air delivery for a standalone lithium replacement battery. Determine the permitted shipping method and whether the speed request changes it.",
+    "documents": ["fixtures/shipping_policy/policy.md", "fixtures/shipping_policy/service_levels.md"],
+    "required_any": [
+      ["ground", "may not be sent by air", "cannot travel by air", "air delivery is not permitted"],
+      ["standalone lithium", "safety restrictions override"]
+    ],
+    "forbidden_any": ["next-day air is permitted", "may be shipped by air"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "shipping_installed_60wh",
+    "title": "Installed 60 Wh battery may travel by air",
+    "expected_verdict": "allow",
+    "query": "Determine whether a laptop containing a properly labeled, installed 60 watt-hour lithium battery may be shipped by air.",
+    "documents": ["fixtures/shipping_policy/policy.md", "fixtures/shipping_policy/service_levels.md"],
+    "required_any": [
+      ["may travel by air", "may be shipped by air", "air shipping is allowed", "eligible for air"],
+      ["100 watt-hours", "100 wh", "60 watt-hour", "60 wh"]
+    ],
+    "forbidden_any": ["must travel by ground", "cannot be shipped by air"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "data_ssn_external_saas",
+    "title": "Social Security numbers cannot enter external SaaS",
+    "expected_verdict": "deny",
+    "query": "Determine whether a team may upload customer Social Security numbers to CloudBoard, an approved external SaaS vendor, for analysis.",
+    "documents": ["fixtures/data_classification/policy.md", "fixtures/data_classification/vendor_list.md"],
+    "required_any": [
+      ["may not", "cannot", "prohibited", "must not"],
+      ["restricted data", "social security numbers", "external saas"]
+    ],
+    "forbidden_any": ["upload is allowed", "may upload customer social security numbers"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "data_confidential_approved_vendor",
+    "title": "Confidential data may use a compliant approved vendor",
+    "expected_verdict": "allow",
+    "query": "A team wants to process a confidential product roadmap in CloudBoard. CloudBoard is approved, an active data processing agreement exists, and encryption is enabled in transit and at rest. Determine whether this is allowed.",
+    "documents": ["fixtures/data_classification/policy.md", "fixtures/data_classification/vendor_list.md"],
+    "required_any": [
+      ["allowed", "may be processed", "permitted"],
+      ["data processing agreement", "encryption"]
+    ],
+    "forbidden_any": ["is prohibited", "may not be processed"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "data_public_external",
+    "title": "Public information may be shared externally",
+    "expected_verdict": "allow",
+    "query": "Determine whether an already published press kit classified as public information may be shared through an external file-delivery service.",
+    "documents": ["fixtures/data_classification/policy.md", "fixtures/data_classification/vendor_list.md"],
+    "required_any": [
+      ["may be shared", "allowed", "can be shared", "permitted"],
+      ["public information", "classified as public"]
+    ],
+    "forbidden_any": ["may not be shared", "external sharing is prohibited"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "machine_f04_one_hour",
+    "title": "F04 allows one hour at reduced speed",
+    "expected_verdict": "allow",
+    "query": "A forming machine displays F04 and production needs one more hour to finish the batch. Determine whether operation may continue and under what restrictions.",
+    "documents": ["fixtures/machine_alarms/manual.md", "fixtures/machine_alarms/maintenance_schedule.md"],
+    "required_any": [
+      ["may continue", "can continue", "operation is allowed"],
+      ["50% speed", "reduced speed", "no more than two hours"]
+    ],
+    "forbidden_any": ["continue at full speed", "must shut down immediately"],
+    "expected_sources": ["manual.md"]
+  },
+  {
+    "id": "machine_p99_shutdown",
+    "title": "P99 requires emergency isolation",
+    "expected_verdict": "action",
+    "query": "A forming machine displays P99. Determine the immediate operator actions and whether it may be restarted after a simple reset.",
+    "documents": ["fixtures/machine_alarms/manual.md", "fixtures/machine_alarms/maintenance_schedule.md"],
+    "required_any": [
+      ["emergency stop", "e-stop"],
+      ["isolate", "do not restart", "must not restart"]
+    ],
+    "forbidden_any": ["restart after a reset", "safe to restart"],
+    "expected_sources": ["manual.md"]
+  },
+  {
+    "id": "procurement_4500",
+    "title": "$4,500 purchase requires manager approval",
+    "expected_verdict": "allow",
+    "query": "A department wants to purchase a $4,500 catalog item. Determine the required approval and whether competitive quotes or committee review are required.",
+    "documents": ["fixtures/procurement/policy.md", "fixtures/procurement/catalog.md"],
+    "required_any": [
+      ["manager approval"],
+      ["does not require three", "no competitive quotes", "below $5,000", "does not require committee"]
+    ],
+    "forbidden_any": ["director approval is required", "three competitive quotes are required"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "procurement_12000_two_quotes",
+    "title": "$12,000 purchase with two quotes is noncompliant",
+    "expected_verdict": "deny",
+    "query": "A proposed $12,000 purchase has director approval but only two competitive quotes. Determine whether it may proceed under the purchasing policy.",
+    "documents": ["fixtures/procurement/policy.md", "fixtures/procurement/catalog.md"],
+    "required_any": [
+      ["may not proceed", "cannot proceed", "not compliant", "requires three competitive quotes"],
+      ["three competitive quotes", "third quote"]
+    ],
+    "forbidden_any": ["may proceed with two quotes", "is compliant"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "procurement_30000_split",
+    "title": "$30,000 requirement cannot be split to avoid review",
+    "expected_verdict": "deny",
+    "query": "A team proposes buying one $30,000 requirement as two related $15,000 orders so each can use director approval. Determine whether this is allowed and what approval path applies.",
+    "documents": ["fixtures/procurement/policy.md", "fixtures/procurement/catalog.md"],
+    "required_any": [
+      ["prohibited", "may not be split", "cannot be split", "not allowed"],
+      ["strategic sourcing", "committee approval", "combined value"]
+    ],
+    "forbidden_any": ["two separate orders are allowed", "director approval is sufficient"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "support_single_user_password",
+    "title": "Single-user password issue is Severity 3",
+    "expected_verdict": "classification",
+    "query": "One customer cannot reset their password, while the service works normally for everyone else. Classify the support severity and give the initial response target.",
+    "documents": ["fixtures/support_sla/policy.md", "fixtures/support_sla/contact_guide.md"],
+    "required_any": [
+      ["severity 3", "sev 3", "severity three"],
+      ["one business day"]
+    ],
+    "forbidden_any": ["severity 1", "15-minute response"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "support_global_outage",
+    "title": "Global production outage is Severity 1",
+    "expected_verdict": "classification",
+    "query": "The production service is unavailable to all customers. Classify the incident severity and give the initial response target.",
+    "documents": ["fixtures/support_sla/policy.md", "fixtures/support_sla/contact_guide.md"],
+    "required_any": [
+      ["severity 1", "sev 1", "severity one"],
+      ["15 minutes", "15-minute"]
+    ],
+    "forbidden_any": ["severity 2", "one business day"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "discount_nonresident_senior",
+    "title": "Nonresident senior is not eligible",
+    "expected_verdict": "deny",
+    "query": "A 70-year-old who lives outside the city requests the community-center senior discount. Determine whether they qualify.",
+    "documents": ["fixtures/community_discount/policy.md", "fixtures/community_discount/programs.md"],
+    "required_any": [
+      ["not eligible", "does not qualify", "cannot receive"],
+      ["nonresident", "city resident", "residency"]
+    ],
+    "forbidden_any": ["qualifies for the senior discount", "is eligible for the senior discount"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "discount_disability_resident",
+    "title": "Resident with documented disability qualifies regardless of age",
+    "expected_verdict": "allow",
+    "query": "A 40-year-old city resident provides documentation of a qualifying disability. Determine whether they qualify for the community-center accessibility discount.",
+    "documents": ["fixtures/community_discount/policy.md", "fixtures/community_discount/programs.md"],
+    "required_any": [
+      ["eligible", "qualifies", "may receive"],
+      ["regardless of age", "documented qualifying disability"]
+    ],
+    "forbidden_any": ["must be 65", "not eligible because of age"],
+    "expected_sources": ["policy.md"]
+  },
+  {
+    "id": "remote_three_days_no_exception",
+    "title": "Current policy limits remote work to two days",
+    "expected_verdict": "deny",
+    "query": "In July 2026, an employee requests three remote-work days every week but has no written VP exception. Determine how many days are allowed under the current policy.",
+    "documents": ["fixtures/versioned_remote_work/current_policy.md", "fixtures/versioned_remote_work/archived_policy.md"],
+    "required_any": [
+      ["two days", "2 days", "two remote work days", "2 remote work days", "only two"],
+      ["current policy", "effective january 1, 2026", "vp exception"]
+    ],
+    "forbidden_any": ["three days are allowed", "3 days are allowed"],
+    "accepted_exact": ["2", "two"],
+    "expected_sources": ["current_policy.md"]
+  },
+  {
+    "id": "remote_vp_exception",
+    "title": "Written VP exception permits a third remote day",
+    "expected_verdict": "allow",
+    "query": "In July 2026, an employee has a written vice-president exception approving three remote-work days each week. Determine whether the third day is allowed under the current policy.",
+    "documents": ["fixtures/versioned_remote_work/current_policy.md", "fixtures/versioned_remote_work/archived_policy.md"],
+    "required_any": [
+      ["allowed", "is permitted", "may work three"],
+      ["written exception", "vice president", "vp"]
+    ],
+    "forbidden_any": ["third day is not allowed", "limited to two days despite"],
+    "expected_sources": ["current_policy.md"]
+  }
+]

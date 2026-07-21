@@ -1,0 +1,11 @@
+{
+  "name": "memory search is isolated by namespace and subject before ranking",
+  "operations": [
+    {"op": "put", "record": {"id": "M1", "namespace": "user-a", "subject": "customer-1", "kind": "preference", "content": "Customer prefers concise updates.", "authority": "user_confirmed"}},
+    {"op": "put", "record": {"id": "M2", "namespace": "user-b", "subject": "customer-1", "kind": "preference", "content": "Customer prefers verbose updates.", "authority": "user_confirmed"}},
+    {"op": "put", "record": {"id": "M3", "namespace": "user-a", "subject": "customer-2", "kind": "preference", "content": "Customer prefers concise updates.", "authority": "user_confirmed"}}
+  ],
+  "searches": [
+    {"query": "What update style does this customer prefer?", "scope": {"namespace": "user-a", "subject": "customer-1"}, "expected_ids": ["M1"]}
+  ]
+}

@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+target/
+artifacts/
+.build/
+.swiftpm/
+benchmarks/results/*.jsonl
+benchmarks/results/*.json
+benchmarks/results/matrix-*/
+.DS_Store
