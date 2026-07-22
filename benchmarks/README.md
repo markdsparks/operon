@@ -101,6 +101,12 @@ If a cloud model rejects `max_tokens`, set its profile's
 `"completion_token_parameter": "max_completion_tokens"`; local profiles
 continue to use the default `max_tokens`.
 
+For the intended quality/latency reference, assign configurations per profile:
+`["operon_full"]` for the local SLM and `["all_context"]` for the cloud model.
+Both receive the same authorized documents; only the local profile uses Operon's
+planning, retrieval, validation, and repair loop. `--config` remains available
+as a command-line override for diagnostic matrices.
+
 ```bash
 export OPERON_CLOUD_API_KEY=...
 PYTHONPATH=sdk/python/src:. python3 -m benchmarks.compare \

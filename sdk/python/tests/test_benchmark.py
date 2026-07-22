@@ -6,7 +6,13 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
-from benchmarks.compare import Profile, comparison, estimated_cost, load_profiles
+from benchmarks.compare import (
+    Profile,
+    comparison,
+    estimated_cost,
+    load_profiles,
+    selected_configurations,
+)
 from benchmarks.matrix import aggregate_matrix, model_slug
 from benchmarks.run import (
     PROTOCOL_VERSION,
@@ -169,6 +175,7 @@ class BenchmarkTests(unittest.TestCase):
                             "base_url": "https://example.invalid/v1",
                             "allow_remote": True,
                             "completion_token_parameter": "max_completion_tokens",
+                            "configurations": ["all_context"],
                         },
                     ]
                 ),
@@ -179,6 +186,16 @@ class BenchmarkTests(unittest.TestCase):
         self.assertFalse(default.allow_remote)
         self.assertTrue(remote.allow_remote)
         self.assertEqual(remote.completion_token_parameter, "max_completion_tokens")
+        self.assertEqual(remote.configurations, ("all_context",))
+
+    def test_profile_configurations_limit_the_default_comparison_matrix(self) -> None:
+        profile = Profile(
+            name="local", model="local", base_url="http://127.0.0.1:11434/v1",
+            configurations=("operon_full",),
+        )
+
+        self.assertEqual(selected_configurations(profile, None), ("operon_full",))
+        self.assertEqual(selected_configurations(profile, ["all_context"]), ("all_context",))
 
 
 if __name__ == "__main__":

@@ -23,13 +23,39 @@ class Profile:
     api_key_env: str | None = None
     allow_remote: bool = False
     completion_token_parameter: str = "max_tokens"
+    configurations: tuple[str, ...] | None = None
     input_cost_per_million: float = 0
     output_cost_per_million: float = 0
 
 
 def load_profiles(path: Path) -> list[Profile]:
     raw = json.loads(path.read_text(encoding="utf-8"))
-    return [Profile(**item) for item in raw]
+    profiles: list[Profile] = []
+    for item in raw:
+        configurations = item.get("configurations")
+        if configurations is not None:
+            if not isinstance(configurations, list) or not all(
+                isinstance(config, str) for config in configurations
+            ):
+                raise ValueError("profile configurations must be a list of strings")
+            item = {**item, "configurations": tuple(configurations)}
+        profile = Profile(**item)
+        if profile.configurations:
+            unknown = set(profile.configurations) - set(CONFIGURATIONS)
+            if unknown:
+                raise ValueError(
+                    f"profile {profile.name} has unknown configurations: "
+                    f"{', '.join(sorted(unknown))}"
+                )
+        profiles.append(profile)
+    return profiles
+
+
+def selected_configurations(
+    profile: Profile, override: Sequence[str] | None
+) -> tuple[str, ...]:
+    """Use an explicit command-line override, then profile defaults, then all modes."""
+    return tuple(override or profile.configurations or CONFIGURATIONS)
 
 
 def estimated_cost(record: RunRecord, profile: Profile) -> float | None:
@@ -80,7 +106,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         command.extend(("--completion-token-parameter", profile.completion_token_parameter))
         for case_id in args.case_ids or []:
             command.extend(("--case", case_id))
-        for config in args.configs or []:
+        for config in selected_configurations(profile, args.configs):
             command.extend(("--config", config))
         if subprocess.run(command, check=False).returncode:
             return 1
