@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::runtime::{
-    ANSWER_SYSTEM_PROMPT, AnswerPayload, PLAN_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT, answer_schema,
-    format_sources, is_complex, normalize_citations, normalize_confidence, output_instruction,
-    parse_model_json, plan_schema, validate_answer, validate_output, validate_schema_definition,
-    validate_schema_instance,
+    ANSWER_SYSTEM_PROMPT, AnswerPayload, PLAN_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT,
+    REPLAN_SYSTEM_PROMPT, answer_schema, format_sources, is_complex, normalize_citations,
+    normalize_confidence, output_instruction, parse_model_json, plan_schema, validate_answer,
+    validate_output, validate_schema_definition, validate_schema_instance,
 };
 use crate::{
     ArtifactReference, Clarification, ContextBudget, ExecutionPolicy, ExecutionTrace,
@@ -779,9 +779,7 @@ impl ExecutionSession {
             stage: Stage::Replan,
             request: GenerationRequest {
                 messages: vec![
-                    Message::system(
-                        "You are Operon's bounded next-action planner. Use typed artifact references and completed skill results to select at most one next authorized skill, request clarification, or return no skill when ready to answer. Return JSON only.",
-                    ),
+                    Message::system(REPLAN_SYSTEM_PROMPT),
                     Message::user(format!(
                         "QUERY:\n{}\n\nTYPED SESSION ARTIFACTS (references only):\n{}\n\nCOMPLETED SKILL RESULTS:\n{}\n\nAUTHORIZED SKILLS:\n{}",
                         self.query,
