@@ -39,13 +39,18 @@
             <span><b>Any</b> compatible model</span><span><b>Local</b> by default</span><span><b>Your app</b> keeps authority</span>
           </div>
         </div>
-        <div class="hero-system" aria-label="Operon turns a model request into a grounded response">
-          <div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="orbit orbit-c"></div>
-          <div class="system-core"><span>O</span><small>OPERON<br />CORE</small></div>
-          <article class="signal prompt"><span class="signal-dot"></span><small>NATURAL LANGUAGE</small><strong>“Do the next step for that.”</strong></article>
-          <article class="signal source"><span class="signal-dot"></span><small>APP CONTEXT</small><strong>Session · memory · live facts</strong></article>
-          <article class="signal answer"><span class="signal-dot"></span><small>VERIFIED RESULT</small><strong>Typed skill completed. Receipt attached.</strong><div class="citation">TRACED · VALIDATED <b>✓</b></div></article>
-          <div class="beam beam-one"></div><div class="beam beam-two"></div><div class="beam beam-three"></div>
+        <div class="hero-system hero-scenario" aria-label="A multi-turn app request handled with and without Operon">
+          <div class="orbit orbit-a"></div><div class="orbit orbit-c"></div>
+          <article class="scenario-card">
+            <header><span>INSIDE A REAL APP</span><small>3 turns · 1 task</small></header>
+            <div class="app-turn"><b>YOU · 1</b><p>“Find a quiet workspace near my hotel.”</p></div>
+            <div class="app-turn app-reply"><b>APP · 2</b><p>“I found Juniper, Atlas, and Common.”</p></div>
+            <div class="app-turn current-turn"><b>YOU · 3</b><p>“Book the second one tomorrow morning.”</p><em>“second one” and “tomorrow” depend on app state</em></div>
+            <div class="scenario-outcomes">
+              <div class="scenario-fail"><span>MODEL ALONE</span><strong>Guesses from chat prose</strong><small>Which result? What date? What timezone?</small></div>
+              <div class="scenario-success"><span>WITH OPERON</span><strong>Resolves state, prepares the skill</strong><small>result_2 · local date · confirmation required</small></div>
+            </div>
+          </article>
         </div>
       </section>
 

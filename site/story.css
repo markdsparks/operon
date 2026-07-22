@@ -166,6 +166,135 @@
   z-index: 1;
 }
 
+.hero-scenario {
+  display: grid;
+  place-items: center;
+}
+
+.scenario-card {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 500px);
+  padding: 18px;
+  border: 1px solid rgba(117, 139, 255, .38);
+  background: rgba(6, 16, 29, .92);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .32);
+  backdrop-filter: blur(12px);
+}
+
+.scenario-card > header {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 2px 13px;
+  border-bottom: 1px solid var(--line);
+  font: 800 9px var(--mono);
+  letter-spacing: .13em;
+}
+
+.scenario-card > header span {
+  color: var(--acid);
+}
+
+.scenario-card > header small {
+  color: #728196;
+  font: inherit;
+}
+
+.app-turn {
+  width: 86%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: #0c1b2b;
+}
+
+.app-turn b {
+  display: block;
+  margin-bottom: 5px;
+  color: #8195ad;
+  font: 800 8px var(--mono);
+  letter-spacing: .12em;
+}
+
+.app-turn p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.app-reply {
+  margin-left: auto;
+  border-color: rgba(117, 139, 255, .36);
+  background: rgba(117, 139, 255, .09);
+}
+
+.current-turn {
+  width: 100%;
+  border-color: rgba(216, 255, 38, .58);
+  background: rgba(216, 255, 38, .08);
+}
+
+.current-turn b,
+.current-turn em {
+  color: var(--acid);
+}
+
+.current-turn em {
+  display: block;
+  margin-top: 8px;
+  font: 700 8px/1.4 var(--mono);
+  letter-spacing: .04em;
+}
+
+.scenario-outcomes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.scenario-outcomes > div {
+  min-height: 105px;
+  padding: 12px;
+  border: 1px solid var(--line);
+}
+
+.scenario-outcomes span,
+.scenario-outcomes strong,
+.scenario-outcomes small {
+  display: block;
+}
+
+.scenario-outcomes span {
+  margin-bottom: 13px;
+  font: 800 8px var(--mono);
+  letter-spacing: .12em;
+}
+
+.scenario-outcomes strong {
+  margin-bottom: 5px;
+  font-size: 11px;
+}
+
+.scenario-outcomes small {
+  color: #8c99a9;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.scenario-fail span {
+  color: #ff846f;
+}
+
+.scenario-success {
+  border-color: rgba(216, 255, 38, .5) !important;
+  background: rgba(216, 255, 38, .06);
+}
+
+.scenario-success span {
+  color: var(--acid);
+}
+
 @media (max-width: 980px) {
   .runtime-grid {
     grid-template-columns: repeat(3, 1fr);
@@ -241,5 +370,17 @@
 
   .statement-lede {
     font-size: 16px;
+  }
+
+  .scenario-card {
+    padding: 14px;
+  }
+
+  .scenario-outcomes {
+    grid-template-columns: 1fr;
+  }
+
+  .scenario-outcomes > div {
+    min-height: auto;
   }
 }
