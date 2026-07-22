@@ -1,13 +1,17 @@
 const copyButton = document.querySelector("[data-copy]");
-const code = `from operon import Operon, LocalDocuments
+const code = `from operon import Operon, SkillRegistry
 
 runtime = Operon.wrap(
-  model=your_local_model,
-  grounding=LocalDocuments("./app-facts"),
+  provider=your_local_model,
+  skills=SkillRegistry(app_skills),
+  memory=local_memory,
 )
 
-result = runtime.run("Answer using local facts")
-print(result.answer, result.sources)`;
+result = runtime.run(
+  "Continue with the last result",
+  session_artifacts=current_context,
+)
+print(result.answer, result.trace.events)`;
 
 copyButton?.addEventListener("click", async () => {
   try {
