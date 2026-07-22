@@ -17,6 +17,14 @@ constrained models more useful through orchestration and explicit structure.
 > experimental browser/Web Worker WASM driver. Public contracts remain
 > intentionally small and experimental.
 
+**Early AppBench evidence:** on 20 synthetic app tasks repeated three times,
+the same local Qwen3 4B model completed 90% with Operon versus 20% in a raw
+full-state tool loop. Reference resolution, argument preparation, and
+clarification reached 100%; dependent chains remain at 50%. Read the
+[methodology](benchmarks/APPBENCH.md) and
+[development results](benchmarks/APPBENCH_RESULTS.md). This is engineering
+evidence, not a general model ranking.
+
 ## Quick start
 
 Operon currently speaks the OpenAI-compatible chat completions protocol used
@@ -179,6 +187,9 @@ pipeline works, not a general capability claim.
 
 The repeatable four-configuration evaluation harness is documented in
 [benchmarks/README.md](benchmarks/README.md).
+The app-task comparison and first repeated development run are documented in
+[benchmarks/APPBENCH.md](benchmarks/APPBENCH.md) and
+[benchmarks/APPBENCH_RESULTS.md](benchmarks/APPBENCH_RESULTS.md).
 The first 30-case development result and its limitations are summarized in
 [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
 

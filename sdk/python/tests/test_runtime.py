@@ -92,7 +92,9 @@ class OperonTests(unittest.TestCase):
                 )
             ]
         )
-        response = Operon(provider, policy=Policy(planning="always"), skills=skills).run(
+        response = Operon(
+            provider, policy=Policy(planning="always", max_replans=0), skills=skills
+        ).run(
             "Am I free Friday?"
         )
 
@@ -115,12 +117,209 @@ class OperonTests(unittest.TestCase):
             descriptor, lambda _: SkillResult({"opened": True}),
             prepare=lambda partial, artifacts: SkillPreparation.ready({"place": artifacts[0].value["place"], "date": artifacts[0].value["date"]}),
         )])
-        response = Operon(provider, policy=Policy(planning="always"), skills=skills).run(
+        response = Operon(
+            provider, policy=Policy(planning="always", max_replans=0), skills=skills
+        ).run(
             "Show the hourly view for that.",
             session_artifacts=(SessionArtifact("window-1", "forecast-window", "Nokomis tomorrow evening", {"place": "Nokomis", "date": "2026-07-23"}),),
         )
         self.assertEqual(response.sources[0].path, "skill://view.hourly")
         self.assertIn("Nokomis tomorrow evening", provider.requests[0].messages[1]["content"])
+
+    def test_replans_after_a_skill_result_and_runs_a_dependent_skill(self) -> None:
+        provider = ScriptedProvider(
+            [
+                {
+                    "intent": "Find and book a slot",
+                    "subquestions": [],
+                    "needs_grounding": False,
+                    "answer_requirements": [],
+                    "skill_calls": [
+                        {"skill_id": "calendar.find", "arguments": {"day": "Friday"}}
+                    ],
+                },
+                {
+                    "intent": "Book the returned slot",
+                    "subquestions": [],
+                    "needs_grounding": False,
+                    "answer_requirements": [],
+                    "skill_calls": [
+                        {"skill_id": "calendar.book", "arguments": {"slot_ref": "slot-1"}}
+                    ],
+                },
+                {
+                    "intent": "The task is complete",
+                    "subquestions": [],
+                    "needs_grounding": False,
+                    "answer_requirements": [],
+                    "skill_calls": [],
+                },
+                {
+                    "answer": "Booked [S1] [S2].",
+                    "confidence": 0.9,
+                    "used_source_ids": ["S1", "S2"],
+                },
+            ]
+        )
+        calls: list[tuple[str, dict[str, object]]] = []
+        find = Skill(
+            SkillDescriptor(
+                id="calendar.find",
+                description="Find a free slot.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"day": {"type": "string"}},
+                    "required": ["day"],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {"slot_id": {"type": "string"}},
+                    "required": ["slot_id"],
+                    "additionalProperties": False,
+                },
+            ),
+            lambda arguments: (
+                calls.append(("calendar.find", arguments))
+                or SkillResult(
+                    {"slot_id": "slot-1"},
+                    artifacts=(
+                        SessionArtifact(
+                            "slot-1", "calendar.slot", "Friday at 9 AM", {"slot_id": "slot-1"}
+                        ),
+                    ),
+                )
+            ),
+        )
+        book = Skill(
+            SkillDescriptor(
+                id="calendar.book",
+                description="Book a slot by reference.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"slot_id": {"type": "string"}},
+                    "required": ["slot_id"],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {"booked": {"type": "boolean"}},
+                    "required": ["booked"],
+                    "additionalProperties": False,
+                },
+            ),
+            lambda arguments: (
+                calls.append(("calendar.book", arguments))
+                or SkillResult({"booked": True})
+            ),
+            prepare=lambda _, artifacts: SkillPreparation.ready(
+                {"slot_id": artifacts[-1].value["slot_id"]}
+            ),
+        )
+
+        response = Operon(
+            provider,
+            policy=Policy(planning="always", max_replans=2),
+            skills=SkillRegistry([find, book]),
+        ).run("Find a free slot Friday and book it.")
+
+        self.assertEqual([skill_id for skill_id, _ in calls], ["calendar.find", "calendar.book"])
+        self.assertEqual(calls[1][1], {"slot_id": "slot-1"})
+        self.assertEqual(
+            [event.stage for event in response.trace.events].count(Stage.REPLAN), 2
+        )
+
+    def test_required_skill_policy_returns_clarification_when_planner_drops_action(self) -> None:
+        provider = ScriptedProvider(
+            [
+                {
+                    "intent": "Book something",
+                    "subquestions": [],
+                    "needs_grounding": False,
+                    "answer_requirements": [],
+                    "skill_calls": [],
+                }
+            ]
+        )
+
+        response = Operon(
+            provider,
+            policy=Policy(
+                planning="always",
+                require_skill_or_clarification=True,
+            ),
+        ).run("Book it.")
+
+        self.assertIsNotNone(response.clarification)
+        self.assertIn("more information", response.answer)
+        self.assertEqual(len(provider.requests), 1)
+
+    def test_suppresses_repeated_skill_during_replanning(self) -> None:
+        repeated_plan = {
+            "intent": "Open the report",
+            "subquestions": [],
+            "needs_grounding": False,
+            "answer_requirements": [],
+            "skill_calls": [
+                {"skill_id": "reports.open", "arguments": {"report_id": "report-1"}}
+            ],
+        }
+        provider = ScriptedProvider(
+            [
+                repeated_plan,
+                repeated_plan,
+                {
+                    "intent": "The report is open",
+                    "subquestions": [],
+                    "needs_grounding": False,
+                    "answer_requirements": [],
+                    "skill_calls": [],
+                },
+                {
+                    "answer": "Opened [S1].",
+                    "confidence": 0.9,
+                    "used_source_ids": ["S1"],
+                },
+            ]
+        )
+        invocations: list[dict[str, object]] = []
+        skill = Skill(
+            SkillDescriptor(
+                id="reports.open",
+                description="Open a report.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"report_id": {"type": "string"}},
+                    "required": ["report_id"],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {"opened": {"type": "boolean"}},
+                    "required": ["opened"],
+                    "additionalProperties": False,
+                },
+            ),
+            lambda arguments: (
+                invocations.append(arguments) or SkillResult({"opened": True})
+            ),
+        )
+
+        response = Operon(
+            provider,
+            policy=Policy(planning="always", max_replans=2),
+            skills=SkillRegistry([skill]),
+        ).run("Open report one.")
+
+        self.assertEqual(invocations, [{"report_id": "report-1"}])
+        self.assertIn(
+            "suppressed a repeated skill during bounded replanning",
+            [event.message for event in response.trace.events],
+        )
+        authorized = provider.requests[2].messages[1]["content"].split(
+            "AUTHORIZED SKILLS:", 1
+        )[1]
+        self.assertNotIn("reports.open", authorized)
 
     def test_planner_prompt_delegates_partial_artifact_resolution_to_host(self) -> None:
         provider = ScriptedProvider([

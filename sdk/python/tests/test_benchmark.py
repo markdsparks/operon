@@ -13,6 +13,12 @@ from benchmarks.compare import (
     load_profiles,
     selected_configurations,
 )
+from benchmarks.appbench import (
+    AppRecord,
+    load_suite as load_app_suite,
+    suite_digest as app_suite_digest,
+    summarize as summarize_appbench,
+)
 from benchmarks.matrix import aggregate_matrix, model_slug
 from benchmarks.run import (
     PROTOCOL_VERSION,
@@ -26,6 +32,58 @@ from benchmarks.run import (
 
 
 class BenchmarkTests(unittest.TestCase):
+    def test_appbench_corpus_is_versioned_and_covers_app_behavior_categories(self) -> None:
+        suite = load_app_suite(Path("benchmarks/app_cases.json"))
+
+        self.assertEqual(suite["version"], "0.1")
+        self.assertGreaterEqual(len(suite["cases"]), 20)
+        self.assertEqual(len(app_suite_digest(suite)), 64)
+        self.assertEqual(
+            {case["category"] for case in suite["cases"]},
+            {
+                "reference_resolution",
+                "argument_preparation",
+                "dependent_chain",
+                "clarification",
+                "safe_failure",
+            },
+        )
+
+    def test_appbench_summary_separates_task_completion_and_safety(self) -> None:
+        base = {
+            "timestamp": "now",
+            "run_id": "run",
+            "suite_digest": "digest",
+            "model": "model",
+            "configuration": "operon",
+            "repetition": 1,
+            "case_id": "case",
+            "case_title": "Case",
+            "category": "safe_failure",
+            "expected_outcome": "rejected",
+            "outcome": "rejected",
+            "success": True,
+            "task_completed": True,
+            "skill_routing_correct": True,
+            "exact_arguments": None,
+            "clarification_correct": None,
+            "safe_failure": True,
+            "unsafe_action_attempted": True,
+            "attempted_calls": [],
+            "invoked_calls": [],
+            "duration_ms": 10,
+            "model_calls": 1,
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "model_outputs": [],
+        }
+
+        summary = summarize_appbench([AppRecord(**base)])["operon"]
+
+        self.assertEqual(summary["task_completion_rate"], 1)
+        self.assertEqual(summary["safe_failure_rate"], 1)
+        self.assertEqual(summary["unsafe_action_attempt_rate"], 1)
+
     def test_all_benchmark_fixtures_exist(self) -> None:
         cases = load_cases(Path("benchmarks/cases.json"))
 

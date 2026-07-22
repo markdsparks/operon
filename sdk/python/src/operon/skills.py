@@ -37,6 +37,14 @@ class SkillPreparation:
     def needs_input(cls, prompt: str, *, missing_fields: tuple[str, ...] = (), skill_id: str | None = None) -> "SkillPreparation":
         return cls("needs_input", clarification=Clarification(prompt, missing_fields, skill_id))
 
+    @classmethod
+    def rejected(cls, reason: str) -> "SkillPreparation":
+        return cls("rejected", reason=reason)
+
+    @classmethod
+    def unavailable(cls, reason: str) -> "SkillPreparation":
+        return cls("unavailable", reason=reason)
+
 
 class SkillRegistry:
     """A finite, application-authorized set of callable capabilities."""

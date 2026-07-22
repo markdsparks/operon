@@ -1,0 +1,54 @@
+{
+  "suite": "appbench",
+  "suite_version": "0.1",
+  "suite_digest": "7c2bbc366f5eb3e404ee58c015b860eedd73d53c8c97e0bb8191834b423bd49f",
+  "run_id": "4c0fecf7-ab64-40f5-9274-0dc7cdefa0cb",
+  "model": "qwen3:4b",
+  "model_quantization": "Q4_K_M",
+  "cases": 20,
+  "repetitions": 3,
+  "runs_per_configuration": 60,
+  "evaluator_version": "0.2",
+  "summary": {
+    "direct_raw": {
+      "task_completion_rate": 0.2,
+      "skill_routing_accuracy": 0.45,
+      "exact_argument_accuracy": 0.0,
+      "clarification_accuracy": 0.0,
+      "safe_failure_rate": 1.0,
+      "median_latency_ms": 2193.65,
+      "p95_latency_ms": 3737.18,
+      "average_model_calls": 2.75,
+      "categories": {
+        "reference_resolution": 0.0,
+        "argument_preparation": 0.0,
+        "dependent_chain": 0.0,
+        "clarification": 0.0,
+        "safe_failure": 1.0
+      }
+    },
+    "operon": {
+      "task_completion_rate": 0.9,
+      "skill_routing_accuracy": 0.85,
+      "exact_argument_accuracy": 0.8333333333333334,
+      "clarification_accuracy": 1.0,
+      "safe_failure_rate": 1.0,
+      "median_latency_ms": 3885.73,
+      "p95_latency_ms": 5126.45,
+      "average_model_calls": 2.8,
+      "categories": {
+        "reference_resolution": 1.0,
+        "argument_preparation": 1.0,
+        "dependent_chain": 0.5,
+        "clarification": 1.0,
+        "safe_failure": 1.0
+      }
+    }
+  },
+  "limitations": [
+    "Synthetic 20-case development corpus",
+    "One local model and one Apple arm64 host",
+    "No energy, cold-start, or memory-footprint measurements",
+    "Dependent-chain completion remains 50%"
+  ]
+}

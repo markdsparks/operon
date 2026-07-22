@@ -153,8 +153,45 @@
   letter-spacing: .12em;
 }
 
-.metrics article:last-child strong {
-  font-size: 36px;
+.proof-copy > small {
+  display: block;
+  max-width: 430px;
+  margin-top: 22px;
+  color: #58730f;
+  font: 700 9px/1.5 var(--mono);
+  letter-spacing: .04em;
+}
+
+.proof-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 22px;
+  margin-top: 26px;
+}
+
+.proof-links a {
+  color: #102000;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(16, 32, 0, .35);
+}
+
+.proof-links a:hover {
+  border-color: #102000;
+}
+
+.proof-links span {
+  margin-left: 5px;
+}
+
+.metrics .metric-gap {
+  background: #c9ef25;
+}
+
+.metrics .metric-gap strong,
+.metrics .metric-gap span {
+  color: #476000;
 }
 
 .terminal pre {

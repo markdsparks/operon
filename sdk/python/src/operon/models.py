@@ -8,6 +8,7 @@ from typing import Any
 
 class Stage(str, Enum):
     CLASSIFY = "classify"
+    REPLAN = "replan"
     SKILL = "skill"
     GROUND = "ground"
     GENERATE = "generate"

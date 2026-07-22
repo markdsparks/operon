@@ -1,5 +1,24 @@
 # Operon benchmark harness
 
+## AppBench: real work inside an app
+
+The document benchmark below measures grounded question answering. AppBench
+measures the more important product outcome: whether the same small local model
+can complete multi-turn app work with and without the Operon harness.
+
+The v0.1 suite covers typed reference resolution, canonical argument
+preparation, dependent skill chains, clarification, and safe failure. Read the
+[methodology](APPBENCH.md) and the first documented
+[Qwen3 4B development results](APPBENCH_RESULTS.md).
+
+```bash
+PYTHONPATH=sdk/python/src:. python3 -m benchmarks.appbench \
+  --model qwen3:4b \
+  --repetitions 3
+```
+
+## Grounded answer benchmark
+
 The harness compares four ways of using the same model:
 
 1. `question_only`: direct structured call with no local documents.

@@ -112,3 +112,9 @@ with a semantic `summary` and a host-private `value`; only the summary reaches
 the planner. A preparation callback can resolve `last_result` into canonical
 arguments or return `SkillPreparation.needs_input(...)` for a structured
 clarification.
+
+With `Policy(max_replans=...)`, the Python reference host can use a completed
+skill result and newly published artifacts to select one bounded next action.
+It suppresses a repeated skill during that turn before another side effect can
+run. Set `require_skill_or_clarification=True` for turns where a generic answer
+is not an acceptable fallback.

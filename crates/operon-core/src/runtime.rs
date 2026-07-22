@@ -539,7 +539,7 @@ pub(crate) fn plan_schema() -> Value {
                 "additionalProperties": false
             }
         },
-        "required": ["intent", "subquestions", "needs_grounding", "answer_requirements"],
+        "required": ["intent", "subquestions", "needs_grounding", "answer_requirements", "skill_calls"],
         "additionalProperties": false
     })
 }

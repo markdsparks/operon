@@ -1,5 +1,9 @@
 # Benchmark results
 
+For app-task completion, reference resolution, skill preparation,
+clarification, and dependent chains, see the separate
+[AppBench v0.1 results](APPBENCH_RESULTS.md).
+
 ## Qwen3 4B, 30-case development run
 
 This is the first full development run of the versioned 30-case corpus. It used
