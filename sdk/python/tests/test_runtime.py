@@ -6,7 +6,16 @@ import unittest
 from collections import deque
 from pathlib import Path
 
-from operon import LocalDocuments, Operon, OperonValidationError, Policy
+from operon import (
+    LocalDocuments,
+    Operon,
+    OperonValidationError,
+    Policy,
+    Skill,
+    SkillDescriptor,
+    SkillRegistry,
+    SkillResult,
+)
 from operon.models import (
     GenerationRequest,
     GenerationResponse,
@@ -42,6 +51,52 @@ class OperonTests(unittest.TestCase):
         self.assertFalse(response.was_repaired)
         self.assertEqual(len(provider.requests), 1)
         self.assertEqual(response.trace.events[0].stage, Stage.CLASSIFY)
+
+    def test_runs_registered_skill_before_answer_and_cites_its_result(self) -> None:
+        provider = ScriptedProvider(
+            [
+                {
+                    "intent": "Check the live application state",
+                    "subquestions": [],
+                    "needs_grounding": False,
+                    "answer_requirements": [],
+                    "skill_calls": [
+                        {"skill_id": "calendar.availability", "arguments": {"day": "Friday"}}
+                    ],
+                },
+                {
+                    "answer": "Friday is open [S1].",
+                    "confidence": 0.9,
+                    "used_source_ids": ["S1"],
+                },
+            ]
+        )
+        skills = SkillRegistry(
+            [
+                Skill(
+                    SkillDescriptor(
+                        id="calendar.availability",
+                        description="Read the app's calendar snapshot.",
+                        input_schema={
+                            "type": "object", "properties": {"day": {"type": "string"}},
+                            "required": ["day"], "additionalProperties": False,
+                        },
+                        output_schema={
+                            "type": "object", "properties": {"open": {"type": "boolean"}},
+                            "required": ["open"], "additionalProperties": False,
+                        },
+                    ),
+                    lambda arguments: SkillResult({"open": arguments["day"] == "Friday"}),
+                )
+            ]
+        )
+        response = Operon(provider, policy=Policy(planning="always"), skills=skills).run(
+            "Am I free Friday?"
+        )
+
+        self.assertEqual(response.answer, "Friday is open [S1].")
+        self.assertEqual(response.sources[0].path, "skill://calendar.availability")
+        self.assertIn(Stage.SKILL, [event.stage for event in response.trace.events])
 
     def test_normalizes_percentage_style_confidence_without_retry(self) -> None:
         provider = ScriptedProvider(

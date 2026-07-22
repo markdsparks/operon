@@ -8,6 +8,7 @@ from typing import Any
 
 class Stage(str, Enum):
     CLASSIFY = "classify"
+    SKILL = "skill"
     GROUND = "ground"
     GENERATE = "generate"
     VALIDATE = "validate"
@@ -73,11 +74,33 @@ class Source:
 
 
 @dataclass(frozen=True, slots=True)
+class SkillDescriptor:
+    id: str
+    description: str
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    requires_user_confirmation: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SkillCall:
+    skill_id: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class SkillResult:
+    output: Any
+    sources: tuple[Source, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class Plan:
     intent: str
     subquestions: tuple[str, ...]
     needs_grounding: bool
     answer_requirements: tuple[str, ...] = ()
+    skill_calls: tuple[SkillCall, ...] = ()
 
 
 @dataclass(slots=True)

@@ -9,10 +9,11 @@ from .memory import (
     MemorySensitivity,
     SQLiteMemoryStore,
 )
-from .models import OperonResponse, Policy
+from .models import OperonResponse, Policy, SkillCall, SkillDescriptor, SkillResult
 from .providers.openai_compatible import OpenAICompatibleProvider
 from .runtime import Operon, OperonValidationError
 from .sessions import SQLiteSessionStore
+from .skills import Skill, SkillRegistry
 
 __all__ = [
     "LocalDocuments",
@@ -28,6 +29,11 @@ __all__ = [
     "Policy",
     "SQLiteSessionStore",
     "SQLiteMemoryStore",
+    "Skill",
+    "SkillCall",
+    "SkillDescriptor",
+    "SkillRegistry",
+    "SkillResult",
 ]
 
 __version__ = "0.1.0"

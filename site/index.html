@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Operon makes local language models more reliable with grounding, validation, repair, and an inspectable execution trace." />
+    <meta name="description" content="Operon makes local language models more reliable with host-controlled skills, grounding, validation, repair, and inspectable traces." />
     <meta property="og:title" content="Operon — Make local models reliable." />
     <meta property="og:description" content="The local-first runtime for grounded, validated AI in real products." />
     <meta property="og:image" content="https://markdsparks.github.io/operon/og.png" />
@@ -69,7 +69,7 @@
           <div class="section-head"><p class="eyebrow">The runtime</p><h2>More than a prompt.<br /><em>A disciplined loop.</em></h2></div>
           <div class="runtime-grid">
             <article><span>01</span><h3>Understand</h3><p>Simple requests move fast. Complex ones become a typed plan with clear answer requirements.</p></article>
-            <article><span>02</span><h3>Ground</h3><p>The host selects the right local context: files, a weather snapshot, app state, or user-approved memory.</p></article>
+            <article><span>02</span><h3>Act &amp; ground</h3><p>The app approves typed skills and selects local context: files, app state, or user-approved memory.</p></article>
             <article><span>03</span><h3>Generate</h3><p>Your inference engine produces structured output. Operon never owns your model or your data.</p></article>
             <article><span>04</span><h3>Verify &amp; repair</h3><p>Check citations, confidence, and your typed business rules. Repair once—or return a safe failure.</p></article>
           </div>
@@ -80,7 +80,7 @@
       <section class="features wrap">
         <div class="feature-intro"><p class="eyebrow">Built for real apps</p><h2>Small models. <em>Serious boundaries.</em></h2><p>Operon makes a model useful inside a product without turning the model into the product’s source of truth.</p></div>
         <div class="feature-list">
-          <article><span class="glyph">⌘</span><div><h3>App-owned authority</h3><p>Your app performs retrieval, calculations, permissions, and side effects. The model never gets ambient access.</p></div></article>
+          <article><span class="glyph">⌘</span><div><h3>App-owned authority</h3><p>Register typed skills for retrieval, calculations, permissions, or actions. The model never gets ambient access.</p></div></article>
           <article><span class="glyph">◌</span><div><h3>Local by default</h3><p>Wrap Ollama, WebLLM, Apple Foundation Models, llama.cpp, or an explicitly approved cloud provider.</p></div></article>
           <article><span class="glyph">↯</span><div><h3>Bounded repair</h3><p>When an answer violates the output contract, Operon supplies the exact failure and gives the model one focused retry.</p></div></article>
           <article><span class="glyph">◎</span><div><h3>Inspectable traces</h3><p>Every result carries the plan, sources, confidence, repair state, and trace needed to understand what happened.</p></div></article>

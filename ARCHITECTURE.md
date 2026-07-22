@@ -10,7 +10,7 @@ Python / Swift / Kotlin SDK
 Operon Core
    ├── classifier and planner
    ├── context budgeter
-   ├── grounding and memory ports
+   ├── grounding, memory, and skill ports
    ├── policy and routing
    ├── validators and repair
    └── execution trace
@@ -27,12 +27,13 @@ InferenceProvider
 
 1. Validate the request and local-only policy.
 2. Take a simple-query fast path or ask the model for a typed plan.
-3. Retrieve local context using the query, intent, and subquestions.
-4. Fit ranked source chunks into the configured context budget.
-5. Generate a structured answer following the plan.
-6. Validate answer shape, confidence, provenance, and inline citations.
-7. Run a targeted repair up to the configured limit.
-8. Return the answer and an execution trace.
+3. Run any model-requested, application-registered skills through the host.
+4. Retrieve local context using the query, intent, and subquestions.
+5. Fit skill results and ranked source chunks into the configured context budget.
+6. Generate a structured answer following the plan.
+7. Validate answer shape, confidence, provenance, and inline citations.
+8. Run a targeted repair up to the configured limit.
+9. Return the answer and an execution trace.
 
 ## Stable boundaries
 
@@ -48,6 +49,13 @@ different reasoning budgets by task, hardware state, and validation history.
 Grounding returns ranked `Source` objects with stable IDs and provenance. The
 current implementation is lexical; vector and hybrid indexes can implement the
 same behavior later.
+
+Skills are portable capability descriptors with an ID, description, input
+schema, output schema, and an optional user-confirmation requirement. The core
+can request an `InvokeSkill` command only for a descriptor configured by the
+application. The host performs the call, and the core validates the returned
+value before it becomes attributable answer context. This keeps permissions,
+side effects, device APIs, and business logic in the app.
 
 `Policy` holds explicit execution constraints. Platform hosts will eventually
 extend this with energy state, thermal state, foreground/background execution,
@@ -67,7 +75,8 @@ Python, Swift, and Kotlin SDKs own language-native ergonomics while core
 behavior remains identical across platforms.
 
 The canonical core is a resumable command/event state machine. It yields
-`Generate` and `Retrieve` commands, then accepts matching completion events.
+`Generate`, `Retrieve`, `SearchMemory`, `InvokeSkill`, and validation commands,
+then accepts matching completion events.
 Native SDKs perform those operations using Python asyncio, Swift concurrency,
 or Kotlin coroutines; the core imposes no async runtime and has no ambient
 network or storage authority.
@@ -99,11 +108,9 @@ See [spec/execution-protocol.md](spec/execution-protocol.md) and
 The recommended session and durable-memory architecture is documented in
 [local context and memory research](docs/research/local-memory-architecture.md).
 
-The protocol now emits a host-owned `SearchMemory` command whenever a session
-is configured with an authorized memory scope. The Python
-reference host implements application-authored SQLite/FTS5 records; the core
-does not yet emit the command while the C ABI and shared context compiler are
-being defined.
+The protocol emits a host-owned `SearchMemory` command whenever a session is
+configured with an authorized memory scope. The Python reference host implements
+application-authored SQLite/FTS5 records; the model never receives write access.
 
 `operon-core` now contains the first shared context compiler. It applies a
 portable character budget across session text, memory records, and sources; the

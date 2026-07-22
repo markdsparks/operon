@@ -145,6 +145,35 @@ pub struct Source {
     pub score: f32,
 }
 
+/// An application-declared capability that a model may request during planning.
+///
+/// Skills are descriptive contracts, not executable code. The host owns their
+/// implementation, availability, permission prompt, timeout, and side effects.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SkillDescriptor {
+    pub id: String,
+    pub description: String,
+    pub input_schema: Value,
+    pub output_schema: Value,
+    #[serde(default)]
+    pub requires_user_confirmation: bool,
+}
+
+/// A typed skill request selected by the planning model from the host registry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillCall {
+    pub skill_id: String,
+    pub arguments: Value,
+}
+
+/// The host-owned result of a skill invocation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SkillResult {
+    pub output: Value,
+    #[serde(default)]
+    pub sources: Vec<Source>,
+}
+
 /// Adapter boundary for lexical, vector, hybrid, or platform-native indexes.
 pub trait GroundingProvider: Send + Sync {
     fn search(&self, query: &str, limit: usize) -> OperonResult<Vec<Source>>;
@@ -233,12 +262,16 @@ pub struct Plan {
     pub needs_grounding: bool,
     #[serde(default)]
     pub answer_requirements: Vec<String>,
+    /// Optional calls selected from the session's declared skill registry.
+    #[serde(default)]
+    pub skill_calls: Vec<SkillCall>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stage {
     Classify,
+    Skill,
     Ground,
     Generate,
     Validate,

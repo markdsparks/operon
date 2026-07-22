@@ -5,10 +5,9 @@ Web Worker. It does not make network requests, load a model, or read device
 data. The host application owns those authorities and resumes the WASM session
 with versioned protocol events.
 
-This is the integration boundary Nearcast needs: its existing WebLLM worker
-remains the local inference provider, while Nearcast's deterministic weather
-engine remains the only source of forecast, alert, freshness, and plan-decision
-facts.
+This is a general integration boundary: the app keeps its WebLLM worker (or
+other local provider), deterministic services, data, and permissions. A weather
+engine is one useful example, not a product constraint.
 
 ## Build the WASM module
 
@@ -36,6 +35,8 @@ const result = await operon.run(
   {
     generate: async ({ request }) => nearcastWebLLM(request),
     retrieve: async ({ query, limit }) => weatherSnapshotSources(query, limit),
+    invokeSkill: async ({ skill_id, arguments, requires_user_confirmation }) =>
+      runApplicationSkill(skill_id, arguments, requires_user_confirmation),
     validateOutput: async ({ output }) => validateNearcastAnswer(output)
   }
 );
@@ -43,7 +44,9 @@ const result = await operon.run(
 
 `generate` returns a protocol `GenerationResponse`; `retrieve` returns `Source[]`;
 `searchMemory` returns `MemoryRecord[]` when enabled; and `validateOutput`
-returns a string array of application validation errors. A rejected operation is
+returns a string array of application validation errors. `invokeSkill` returns
+`{ output, sources }` after the app has performed any required confirmation.
+A rejected operation is
 reported to Rust as a typed `command_failed` event, never converted into an
 invented answer.
 

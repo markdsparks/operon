@@ -12,6 +12,7 @@ export const HostFailure = Object.freeze({
   provider: "provider",
   grounding: "grounding",
   memory: "memory",
+  skill: "skill",
   cancelled: "cancelled",
   timeout: "timeout"
 });
@@ -36,6 +37,7 @@ function parseStep(json) {
 function failureFor(command) {
   if (command.kind === "retrieve") return HostFailure.grounding;
   if (command.kind === "search_memory") return HostFailure.memory;
+  if (command.kind === "invoke_skill") return HostFailure.skill;
   return HostFailure.provider;
 }
 
@@ -52,6 +54,8 @@ function eventFor(command, value) {
       return { kind: "memory_search_completed", protocol_version: protocolVersion, request_id: requestId, records: value };
     case "validate_output":
       return { kind: "output_validated", protocol_version: protocolVersion, request_id: requestId, errors: value };
+    case "invoke_skill":
+      return { kind: "skill_completed", protocol_version: protocolVersion, request_id: requestId, result: value };
     default:
       throw protocolError(`unsupported command kind ${command.kind}`);
   }
@@ -84,6 +88,10 @@ export async function runSession(session, host) {
         case "validate_output":
           if (typeof host.validateOutput !== "function") throw new Error("host does not implement validateOutput");
           payload = await host.validateOutput(command);
+          break;
+        case "invoke_skill":
+          if (typeof host.invokeSkill !== "function") throw new Error("host does not implement invokeSkill");
+          payload = await host.invokeSkill(command);
           break;
         default: throw protocolError(`unsupported command kind ${command.kind}`);
       }

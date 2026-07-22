@@ -37,6 +37,29 @@ test("returns a typed command failure when a host command rejects", async () => 
   });
 });
 
+test("dispatches an app-owned skill and preserves its typed result", async () => {
+  const invokeSkill = {
+    kind: "command",
+    command: {
+      kind: "invoke_skill", protocol_version: "0.1", request_id: 4,
+      skill_id: "calendar.availability", arguments: { day: "Friday" },
+      requires_user_confirmation: true
+    }
+  };
+  const session = new ScriptedSession([invokeSkill, { kind: "complete", result: { answer: "Done" } }]);
+  await runSession(session, {
+    invokeSkill: async (command) => {
+      assert.equal(command.requires_user_confirmation, true);
+      assert.equal(command.arguments.day, "Friday");
+      return { output: { open: true }, sources: [] };
+    }
+  });
+  assert.deepEqual(session.events[0], {
+    kind: "skill_completed", protocol_version: "0.1", request_id: 4,
+    result: { output: { open: true }, sources: [] }
+  });
+});
+
 test("creates and frees a wasm-bindgen session", async () => {
   let freed = false;
   const wasm = {

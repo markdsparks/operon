@@ -7,11 +7,12 @@ use crate::runtime::{
     ANSWER_SYSTEM_PROMPT, AnswerPayload, PLAN_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT, answer_schema,
     format_sources, is_complex, normalize_citations, normalize_confidence, output_instruction,
     parse_model_json, plan_schema, validate_answer, validate_output, validate_schema_definition,
+    validate_schema_instance,
 };
 use crate::{
     ContextBudget, ExecutionPolicy, ExecutionTrace, GenerationRequest, GenerationResponse,
-    MemoryRecord, MemoryScope, Message, OperonError, OperonResponse, OperonResult, Plan, Source,
-    Stage, Strategy, TraceEvent, compile_context,
+    MemoryRecord, MemoryScope, Message, OperonError, OperonResponse, OperonResult, Plan, SkillCall,
+    SkillDescriptor, SkillResult, Source, Stage, Strategy, TraceEvent, compile_context,
 };
 
 pub const EXECUTION_PROTOCOL_VERSION: &str = "0.1";
@@ -43,6 +44,15 @@ pub enum ExecutionCommand {
         request_id: u64,
         output: Value,
     },
+    /// Ask the application host to run one explicitly registered capability.
+    /// The model never receives a direct side-effect channel.
+    InvokeSkill {
+        protocol_version: String,
+        request_id: u64,
+        skill_id: String,
+        arguments: Value,
+        requires_user_confirmation: bool,
+    },
 }
 
 impl ExecutionCommand {
@@ -51,7 +61,8 @@ impl ExecutionCommand {
             Self::Generate { request_id, .. }
             | Self::Retrieve { request_id, .. }
             | Self::SearchMemory { request_id, .. }
-            | Self::ValidateOutput { request_id, .. } => *request_id,
+            | Self::ValidateOutput { request_id, .. }
+            | Self::InvokeSkill { request_id, .. } => *request_id,
         }
     }
 }
@@ -62,6 +73,7 @@ pub enum HostFailureKind {
     Provider,
     Grounding,
     Memory,
+    Skill,
     Cancelled,
     Timeout,
 }
@@ -89,6 +101,11 @@ pub enum ExecutionEvent {
         request_id: u64,
         errors: Vec<String>,
     },
+    SkillCompleted {
+        protocol_version: String,
+        request_id: u64,
+        result: SkillResult,
+    },
     CommandFailed {
         protocol_version: String,
         request_id: u64,
@@ -104,6 +121,7 @@ impl ExecutionEvent {
             | Self::RetrievalCompleted { request_id, .. }
             | Self::MemorySearchCompleted { request_id, .. }
             | Self::OutputValidated { request_id, .. }
+            | Self::SkillCompleted { request_id, .. }
             | Self::CommandFailed { request_id, .. } => *request_id,
         }
     }
@@ -120,6 +138,9 @@ impl ExecutionEvent {
                 protocol_version, ..
             }
             | Self::OutputValidated {
+                protocol_version, ..
+            }
+            | Self::SkillCompleted {
                 protocol_version, ..
             }
             | Self::CommandFailed {
@@ -175,6 +196,9 @@ pub struct SessionConfig {
     /// An application-authorized durable-memory read scope. When present, the
     /// session yields SearchMemory before retrieval and generation.
     pub memory_scope: Option<MemoryScope>,
+    /// Application-owned capabilities that the planner may request. An empty
+    /// list means no capability invocation is possible.
+    pub skills: Vec<SkillDescriptor>,
 }
 
 #[derive(Debug)]
@@ -183,6 +207,7 @@ enum Pending {
     Plan(u64),
     Retrieval(u64),
     MemorySearch(u64),
+    Skill(u64),
     Answer(u64),
     Repair(u64),
     ApplicationValidation(u64),
@@ -198,6 +223,8 @@ pub struct ExecutionSession {
     plan: Option<Plan>,
     sources: Vec<Source>,
     memories: Vec<MemoryRecord>,
+    skill_sources: Vec<Source>,
+    next_skill_index: usize,
     repair_attempts: usize,
     was_repaired: bool,
     pending_payload: Option<AnswerPayload>,
@@ -216,6 +243,30 @@ impl ExecutionSession {
                 return Err(OperonError::InvalidPolicy(errors.join("; ")));
             }
         }
+        let mut skill_ids = BTreeSet::new();
+        for skill in &config.skills {
+            if skill.id.trim().is_empty() {
+                return Err(OperonError::InvalidPolicy(
+                    "skill id cannot be empty".into(),
+                ));
+            }
+            if !skill_ids.insert(skill.id.as_str()) {
+                return Err(OperonError::InvalidPolicy(format!(
+                    "duplicate skill id: {}",
+                    skill.id
+                )));
+            }
+            for (name, schema) in [
+                ("input_schema", &skill.input_schema),
+                ("output_schema", &skill.output_schema),
+            ] {
+                let errors =
+                    validate_schema_definition(schema, &format!("skill {} {name}", skill.id));
+                if !errors.is_empty() {
+                    return Err(OperonError::InvalidPolicy(errors.join("; ")));
+                }
+            }
+        }
         Ok(Self {
             query: query.trim().to_owned(),
             config,
@@ -225,6 +276,8 @@ impl ExecutionSession {
             plan: None,
             sources: Vec::new(),
             memories: Vec::new(),
+            skill_sources: Vec::new(),
+            next_skill_index: 0,
             repair_attempts: 0,
             was_repaired: false,
             pending_payload: None,
@@ -247,6 +300,7 @@ impl ExecutionSession {
             subquestions: Vec::new(),
             needs_grounding: self.config.has_grounding,
             answer_requirements: Vec::new(),
+            skill_calls: Vec::new(),
         });
         self.trace.add(
             Stage::Classify,
@@ -267,6 +321,7 @@ impl ExecutionSession {
             Pending::Plan(id)
             | Pending::Retrieval(id)
             | Pending::MemorySearch(id)
+            | Pending::Skill(id)
             | Pending::Answer(id)
             | Pending::Repair(id)
             | Pending::ApplicationValidation(id) => id,
@@ -295,6 +350,7 @@ impl ExecutionSession {
             return Err(match failure {
                 HostFailureKind::Grounding => OperonError::Grounding(message),
                 HostFailureKind::Memory => OperonError::Memory(message),
+                HostFailureKind::Skill => OperonError::Provider(message),
                 HostFailureKind::Provider
                 | HostFailureKind::Cancelled
                 | HostFailureKind::Timeout => OperonError::Provider(message),
@@ -306,7 +362,9 @@ impl ExecutionSession {
                 self.accept_plan(response)
             }
             (Pending::Retrieval(_), ExecutionEvent::RetrievalCompleted { sources, .. }) => {
-                self.sources = sources;
+                self.sources = self.skill_sources.clone();
+                self.sources.extend(sources);
+                self.normalize_source_ids();
                 self.trace.add(
                     Stage::Ground,
                     "retrieved local context",
@@ -325,6 +383,9 @@ impl ExecutionSession {
                     json!({ "records": self.memories.len() }),
                 );
                 Ok(self.after_memory())
+            }
+            (Pending::Skill(_), ExecutionEvent::SkillCompleted { result, .. }) => {
+                self.accept_skill_result(result)
             }
             (Pending::Answer(_), ExecutionEvent::GenerationCompleted { response, .. }) => {
                 self.trace_generation(Stage::Generate, &response);
@@ -357,7 +418,11 @@ impl ExecutionSession {
             request: GenerationRequest {
                 messages: vec![
                     Message::system(PLAN_SYSTEM_PROMPT),
-                    Message::user(&self.query),
+                    Message::user(format!(
+                        "QUERY:\n{}\n\nAUTHORIZED SKILLS:\n{}",
+                        self.query,
+                        self.skill_catalog()
+                    )),
                 ],
                 schema: Some(plan_schema()),
                 temperature: 0.0,
@@ -375,6 +440,9 @@ impl ExecutionSession {
         plan.subquestions.retain(|item| !item.trim().is_empty());
         plan.answer_requirements
             .retain(|item| !item.trim().is_empty());
+        let requested_skill_calls = plan.skill_calls.len();
+        plan.skill_calls
+            .retain(|call| self.is_valid_skill_call(call));
         plan.needs_grounding = self.config.has_grounding;
         if plan.intent.is_empty() {
             return Err(OperonError::InvalidModelOutput(
@@ -391,6 +459,8 @@ impl ExecutionSession {
                 "prompt_tokens": response.prompt_tokens,
                 "completion_tokens": response.completion_tokens,
                 "finish_reason": response.finish_reason
+                ,"requested_skill_calls": requested_skill_calls
+                ,"accepted_skill_calls": plan.skill_calls.len()
             }),
         );
         self.plan = Some(plan);
@@ -398,6 +468,9 @@ impl ExecutionSession {
     }
 
     fn after_plan(&mut self) -> ExecutionStep {
+        if let Some(command) = self.next_skill_command() {
+            return command;
+        }
         if let Some(scope) = self.config.memory_scope.clone() {
             let request_id = self.allocate_request_id();
             self.pending = Pending::MemorySearch(request_id);
@@ -423,10 +496,12 @@ impl ExecutionSession {
                 limit: self.config.policy.max_sources,
             })
         } else {
+            self.sources = self.skill_sources.clone();
+            self.normalize_source_ids();
             self.trace.add(
                 Stage::Ground,
                 "grounding not required",
-                json!({ "sources": 0 }),
+                json!({ "sources": self.sources.len() }),
             );
             self.answer_command()
         }
@@ -439,6 +514,113 @@ impl ExecutionSession {
             .chain(plan.subquestions.iter().map(String::as_str))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    fn skill_catalog(&self) -> String {
+        if self.config.skills.is_empty() {
+            return "(none)".into();
+        }
+        serde_json::to_string_pretty(&self.config.skills).expect("skill catalog serializes")
+    }
+
+    fn is_valid_skill_call(&self, call: &SkillCall) -> bool {
+        let Some(skill) = self
+            .config
+            .skills
+            .iter()
+            .find(|skill| skill.id == call.skill_id)
+        else {
+            return false;
+        };
+        validate_schema_instance(&call.arguments, &skill.input_schema, "skill arguments").is_empty()
+    }
+
+    fn next_skill_command(&mut self) -> Option<ExecutionStep> {
+        let call = self
+            .plan
+            .as_ref()?
+            .skill_calls
+            .get(self.next_skill_index)?
+            .clone();
+        let requires_user_confirmation = self
+            .config
+            .skills
+            .iter()
+            .find(|skill| skill.id == call.skill_id)?
+            .requires_user_confirmation;
+        let request_id = self.allocate_request_id();
+        self.pending = Pending::Skill(request_id);
+        Some(ExecutionStep::Command(ExecutionCommand::InvokeSkill {
+            protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+            request_id,
+            skill_id: call.skill_id,
+            arguments: call.arguments,
+            requires_user_confirmation,
+        }))
+    }
+
+    fn accept_skill_result(&mut self, result: SkillResult) -> OperonResult<ExecutionStep> {
+        let call = self
+            .plan
+            .as_ref()
+            .and_then(|plan| plan.skill_calls.get(self.next_skill_index))
+            .ok_or_else(|| {
+                OperonError::InvalidRequest("skill completion has no pending call".into())
+            })?;
+        let skill = self
+            .config
+            .skills
+            .iter()
+            .find(|skill| skill.id == call.skill_id)
+            .ok_or_else(|| {
+                OperonError::InvalidRequest(
+                    "skill completion refers to an unavailable skill".into(),
+                )
+            })?;
+        let errors = validate_schema_instance(&result.output, &skill.output_schema, "skill output");
+        if !errors.is_empty() {
+            return Err(OperonError::Validation(errors));
+        }
+        let text = serde_json::to_string_pretty(&result.output)
+            .map_err(|error| OperonError::InvalidModelOutput(error.to_string()))?;
+        self.skill_sources.push(Source {
+            id: format!("skill-{}", self.next_skill_index + 1),
+            path: format!("skill://{}", skill.id),
+            text,
+            score: 1.0,
+        });
+        self.skill_sources.extend(result.sources);
+        self.trace.add(
+            Stage::Skill,
+            "completed application-owned skill",
+            json!({ "skill_id": skill.id, "sources": self.skill_sources.len() }),
+        );
+        self.next_skill_index += 1;
+        if let Some(command) = self.next_skill_command() {
+            return Ok(command);
+        }
+        Ok(self.after_plan_without_skills())
+    }
+
+    fn after_plan_without_skills(&mut self) -> ExecutionStep {
+        if let Some(scope) = self.config.memory_scope.clone() {
+            let request_id = self.allocate_request_id();
+            self.pending = Pending::MemorySearch(request_id);
+            return ExecutionStep::Command(ExecutionCommand::SearchMemory {
+                protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+                request_id,
+                query: self.context_query(),
+                scope,
+                limit: self.config.policy.max_sources,
+            });
+        }
+        self.after_memory()
+    }
+
+    fn normalize_source_ids(&mut self) {
+        for (index, source) in self.sources.iter_mut().enumerate() {
+            source.id = format!("S{}", index + 1);
+        }
     }
 
     fn answer_command(&mut self) -> ExecutionStep {

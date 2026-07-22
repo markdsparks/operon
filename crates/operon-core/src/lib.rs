@@ -18,8 +18,8 @@ pub use error::{OperonError, OperonResult};
 pub use models::{
     ExecutionPolicy, ExecutionTrace, GenerationRequest, GenerationResponse, GroundingProvider,
     InferenceProvider, MemoryAuthority, MemoryKind, MemoryRecord, MemoryScope, MemorySensitivity,
-    MemoryStatus, Message, ModelCapabilities, OperonResponse, Plan, PrivacyClass, Source, Stage,
-    Strategy, TraceEvent,
+    MemoryStatus, Message, ModelCapabilities, OperonResponse, Plan, PrivacyClass, SkillCall,
+    SkillDescriptor, SkillResult, Source, Stage, Strategy, TraceEvent,
 };
 pub use protocol::{
     EXECUTION_PROTOCOL_VERSION, ExecutionCommand, ExecutionEvent, ExecutionResult,

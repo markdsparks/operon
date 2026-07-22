@@ -12,6 +12,7 @@ from .models import (
     OperonResponse,
     Plan,
     Policy,
+    SkillCall,
     Source,
     Stage,
 )
@@ -19,6 +20,7 @@ from .memory import MemoryContext, MemoryScope, MemoryStore
 from .providers.base import InferenceProvider
 from .schema import validate_instance, validate_schema_definition
 from .sessions import SessionContext, SessionStore
+from .skills import SkillRegistry
 
 
 _PLAN_SCHEMA: dict[str, Any] = {
@@ -28,6 +30,18 @@ _PLAN_SCHEMA: dict[str, Any] = {
         "subquestions": {"type": "array", "items": {"type": "string"}},
         "needs_grounding": {"type": "boolean"},
         "answer_requirements": {"type": "array", "items": {"type": "string"}},
+        "skill_calls": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {"type": "string"},
+                    "arguments": {"type": "object", "additionalProperties": True},
+                },
+                "required": ["skill_id", "arguments"],
+                "additionalProperties": False,
+            },
+        },
     },
     "required": ["intent", "subquestions", "needs_grounding", "answer_requirements"],
     "additionalProperties": False,
@@ -72,6 +86,7 @@ class Operon:
         output_schema: dict[str, Any] | None = None,
         sessions: SessionStore | None = None,
         memory: MemoryStore | None = None,
+        skills: SkillRegistry | None = None,
     ) -> None:
         self.provider = provider
         if grounding is None or isinstance(grounding, LocalDocuments):
@@ -82,6 +97,7 @@ class Operon:
         self.output_schema = deepcopy(output_schema)
         self.sessions = sessions
         self.memory = memory
+        self.skills = skills or SkillRegistry()
         if self.output_schema is not None:
             schema_errors = validate_schema_definition(self.output_schema)
             if schema_errors:
@@ -114,7 +130,8 @@ class Operon:
         session = self._session_context(session_id, trace)
         memory = self._memory_context(query, memory_scope, trace)
         plan = self._plan(query, trace, session, memory)
-        sources = self._ground(query, plan, trace)
+        skill_sources = self._run_skills(plan, trace)
+        sources = self._normalize_sources((*skill_sources, *self._ground(query, plan, trace)))
         payload, was_repaired, attempts = self._answer(
             query, plan, sources, trace, session, memory
         )
@@ -213,6 +230,7 @@ class Operon:
                 intent=query,
                 subquestions=(),
                 needs_grounding=self.grounding is not None,
+                skill_calls=(),
             )
             trace.add(Stage.CLASSIFY, "used fast-path plan", complex=False)
             return plan
@@ -230,7 +248,21 @@ class Operon:
                     },
                     {
                         "role": "user",
-                        "content": self._query_with_context(query, session, memory),
+                        "content": self._query_with_context(query, session, memory)
+                        + "\n\nAUTHORIZED SKILLS:\n"
+                        + json.dumps(
+                            [
+                                {
+                                    "id": skill.id,
+                                    "description": skill.description,
+                                    "input_schema": skill.input_schema,
+                                    "output_schema": skill.output_schema,
+                                    "requires_user_confirmation": skill.requires_user_confirmation,
+                                }
+                                for skill in self.skills.descriptors
+                            ],
+                            sort_keys=True,
+                        ),
                     },
                 ),
                 schema=_PLAN_SCHEMA,
@@ -249,6 +281,13 @@ class Operon:
             # veto the developer's request to use attached evidence.
             needs_grounding=self.grounding is not None,
             answer_requirements=tuple(_string_list(data.get("answer_requirements"))),
+            skill_calls=self.skills.authorized_calls(
+                SkillCall(skill_id=item["skill_id"], arguments=item["arguments"])
+                for item in data.get("skill_calls", [])
+                if isinstance(item, dict)
+                and isinstance(item.get("skill_id"), str)
+                and isinstance(item.get("arguments"), dict)
+            ),
         )
         trace.add(
             Stage.CLASSIFY,
@@ -259,8 +298,38 @@ class Operon:
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,
             finish_reason=response.finish_reason,
+            requested_skill_calls=len(data.get("skill_calls", [])) if isinstance(data.get("skill_calls"), list) else 0,
+            accepted_skill_calls=len(plan.skill_calls),
         )
         return plan
+
+    def _run_skills(self, plan: Plan, trace: ExecutionTrace) -> tuple[Source, ...]:
+        sources: list[Source] = []
+        for index, call in enumerate(plan.skill_calls, start=1):
+            result = self.skills.invoke(call)
+            sources.append(
+                Source(
+                    id=f"skill-{index}",
+                    path=f"skill://{call.skill_id}",
+                    text=json.dumps(result.output, sort_keys=True),
+                    score=1.0,
+                )
+            )
+            sources.extend(result.sources)
+            trace.add(
+                Stage.SKILL,
+                "completed application-owned skill",
+                skill_id=call.skill_id,
+                sources=len(sources),
+            )
+        return tuple(sources)
+
+    @staticmethod
+    def _normalize_sources(sources: tuple[Source, ...]) -> tuple[Source, ...]:
+        return tuple(
+            Source(id=f"S{index}", path=source.path, text=source.text, score=source.score)
+            for index, source in enumerate(sources, start=1)
+        )
 
     def _ground(
         self, query: str, plan: Plan, trace: ExecutionTrace

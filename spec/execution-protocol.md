@@ -69,6 +69,16 @@ errors are supplied to a bounded targeted-repair command. This preserves the
 boundary between deterministic business rules in the app and model-generated
 interpretation.
 
+### Invoke skill
+
+Requests one application-registered capability. A session configuration supplies
+the finite registry of descriptors, each with an ID, typed input/output schemas,
+and whether the host must obtain user confirmation. The planner may request a
+call only from that registry; the core drops unknown calls and calls whose
+arguments do not validate. The host remains responsible for permission prompts,
+side effects, and the actual implementation. A validated skill result becomes
+attributable local source context for the answer stage.
+
 ## Events
 
 ### Generation completed
@@ -87,6 +97,12 @@ Returns ordered `MemoryRecord` values for a matching Search memory command.
 
 Returns zero or more application validation errors for a matching Validate
 output command.
+
+### Skill completed
+
+Returns the typed output and optional provenance sources for a matching Invoke
+skill command. The core checks the output against the registered descriptor
+before it can enter model context.
 
 ### Command failed
 
@@ -129,5 +145,5 @@ native SDK.
 ## Security boundary
 
 The core is pure orchestration and has no ambient authority. The host decides
-which providers, documents, tools, and network capabilities exist. A local-only
+which providers, documents, skills, and network capabilities exist. A local-only
 policy must be enforced when providers are admitted, before execution begins.

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use operon_core::{
     ExecutionCommand, ExecutionEvent, ExecutionPolicy, ExecutionSession, ExecutionStep,
-    MemoryScope, MemorySensitivity, SessionConfig, Stage, Strategy,
+    MemoryScope, MemorySensitivity, SessionConfig, SkillDescriptor, SkillResult, Stage, Strategy,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -33,6 +33,7 @@ fn replays_refund_grounding_repair_fixture() {
             output_schema: None,
             has_application_validator: false,
             memory_scope: None,
+            skills: vec![],
         },
     )
     .unwrap();
@@ -117,6 +118,7 @@ fn application_validation_errors_trigger_a_targeted_repair() {
             })),
             has_application_validator: true,
             memory_scope: None,
+            skills: vec![],
         },
     )
     .unwrap();
@@ -205,6 +207,7 @@ fn memory_scope_yields_search_before_generation_and_enters_context() {
             output_schema: None,
             has_application_validator: false,
             memory_scope: Some(scope.clone()),
+            skills: vec![],
         },
     )
     .unwrap();
@@ -271,12 +274,14 @@ fn command_label(command: &ExecutionCommand) -> String {
         ExecutionCommand::Retrieve { .. } => "retrieve".into(),
         ExecutionCommand::SearchMemory { .. } => "search_memory".into(),
         ExecutionCommand::ValidateOutput { .. } => "validate_output".into(),
+        ExecutionCommand::InvokeSkill { .. } => "invoke_skill".into(),
     }
 }
 
 fn stage_name(stage: Stage) -> &'static str {
     match stage {
         Stage::Classify => "classify",
+        Stage::Skill => "skill",
         Stage::Ground => "ground",
         Stage::Generate => "generate",
         Stage::Validate => "validate",
@@ -290,6 +295,72 @@ fn event_request_id(event: &ExecutionEvent) -> u64 {
         | ExecutionEvent::RetrievalCompleted { request_id, .. }
         | ExecutionEvent::MemorySearchCompleted { request_id, .. }
         | ExecutionEvent::OutputValidated { request_id, .. }
+        | ExecutionEvent::SkillCompleted { request_id, .. }
         | ExecutionEvent::CommandFailed { request_id, .. } => *request_id,
+    }
+}
+
+#[test]
+fn invokes_only_registered_validated_skills_and_exposes_their_result_as_context() {
+    let skill = SkillDescriptor {
+        id: "weather.lookup".into(),
+        description: "Reads the application's weather snapshot.".into(),
+        input_schema: json!({"type":"object","properties":{"place":{"type":"string"}},"required":["place"],"additionalProperties":false}),
+        output_schema: json!({"type":"object","properties":{"forecast":{"type":"string"}},"required":["forecast"],"additionalProperties":false}),
+        requires_user_confirmation: false,
+    };
+    let mut session = ExecutionSession::new(
+        "Can I picnic in Madison?",
+        SessionConfig {
+            policy: ExecutionPolicy {
+                planning: Strategy::Always,
+                ..ExecutionPolicy::default()
+            },
+            skills: vec![skill],
+            ..SessionConfig::default()
+        },
+    )
+    .unwrap();
+    let plan_id = match session.start().unwrap() {
+        ExecutionStep::Command(ExecutionCommand::Generate {
+            request_id,
+            request,
+            ..
+        }) => {
+            assert!(request.messages[1].content.contains("weather.lookup"));
+            request_id
+        }
+        _ => panic!("expected planning"),
+    };
+    let skill_id = match session.resume(ExecutionEvent::GenerationCompleted {
+        protocol_version: "0.1".into(), request_id: plan_id,
+        response: operon_core::GenerationResponse::text(r#"{"intent":"check forecast","subquestions":[],"needs_grounding":false,"answer_requirements":[],"skill_calls":[{"skill_id":"weather.lookup","arguments":{"place":"Madison"}}]}"#),
+    }).unwrap() {
+        ExecutionStep::Command(ExecutionCommand::InvokeSkill { request_id, skill_id, arguments, .. }) => {
+            assert_eq!(skill_id, "weather.lookup"); assert_eq!(arguments["place"], "Madison"); request_id
+        }
+        _ => panic!("expected skill invocation"),
+    };
+    match session
+        .resume(ExecutionEvent::SkillCompleted {
+            protocol_version: "0.1".into(),
+            request_id: skill_id,
+            result: SkillResult {
+                output: json!({"forecast":"Dry until 4pm"}),
+                sources: vec![],
+            },
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::Generate { request, stage, .. }) => {
+            assert_eq!(stage, Stage::Generate);
+            assert!(
+                request.messages[1]
+                    .content
+                    .contains("skill://weather.lookup")
+            );
+            assert!(request.messages[1].content.contains("Dry until 4pm"));
+        }
+        _ => panic!("expected answer generation"),
     }
 }

@@ -2,7 +2,8 @@
 
 Operon is a local-first cognitive runtime for small language models. Wrap a
 model, attach local knowledge, and get task decomposition, grounding,
-structured execution, validation, repair, and inspectable traces.
+structured execution, host-controlled skills, validation, repair, and
+inspectable traces.
 
 ```text
 query → classify → retrieve → generate → validate → repair → response
@@ -104,6 +105,12 @@ declared namespace, subject, sensitivity, validity, and status filters before
 retrieval; the model only receives the selected records as attributed historical
 data. See the [typed durable-memory guide](sdk/python/README.md#typed-durable-memory).
 
+For live app state and deterministic actions, register a typed skill. The model
+may request only a descriptor the app supplied; Operon validates its arguments,
+the host retains user-confirmation and side-effect authority, and the validated
+result returns as citable local context. This works for any domain—calendar,
+device sensor, inventory, weather, health workflow, or internal business rule.
+
 ## What v0 does
 
 - Uses a fast path for simple requests and planning for complex ones.
@@ -112,6 +119,7 @@ data. See the [typed durable-memory guide](sdk/python/README.md#typed-durable-me
 - Limits retrieved context to an explicit budget.
 - Requests schema-constrained intermediate and final output.
 - Enforces optional application-defined typed output schemas.
+- Invokes only application-registered skills with typed input/output contracts.
 - Validates confidence, citations, and source identifiers.
 - Runs a bounded, targeted repair when validation fails.
 - Repairs missing markers deterministically when every declared source is valid.

@@ -75,3 +75,33 @@ result = assistant.run(
 
 The app controls writes, supersession, tombstones, export, and deletion. The
 model has read-only, attributed access to the selected historical records.
+
+## App-owned skills
+
+Skills connect the plan to fresh app state or controlled actions without giving
+the model ambient authority. Register a finite typed catalog; only its entries
+can be requested. The host validates inputs and outputs, and may require an
+explicit user confirmation before a handler runs.
+
+```python
+from operon import Skill, SkillDescriptor, SkillRegistry, SkillResult
+
+skills = SkillRegistry([
+    Skill(
+        SkillDescriptor(
+            id="calendar.availability",
+            description="Read the application's calendar snapshot.",
+            input_schema={"type": "object", "properties": {"day": {"type": "string"}},
+                          "required": ["day"], "additionalProperties": False},
+            output_schema={"type": "object", "properties": {"open": {"type": "boolean"}},
+                           "required": ["open"], "additionalProperties": False},
+        ),
+        lambda arguments: SkillResult({"open": lookup_day(arguments["day"])}),
+    )
+])
+
+assistant = Operon.wrap(provider, skills=skills)
+```
+
+Skill results are validated and become citable local context. The application,
+not the model, owns the handler, permission prompt, and every side effect.

@@ -76,6 +76,7 @@ impl<'a> OperonRuntime<'a> {
                 output_schema: self.output_schema.clone(),
                 has_application_validator: false,
                 memory_scope: None,
+                skills: Vec::new(),
             },
         )?;
         let mut step = session.start()?;
@@ -118,6 +119,11 @@ impl<'a> OperonRuntime<'a> {
                     return Err(OperonError::Validation(vec![
                         "synchronous runtime does not host application validation".into(),
                     ]));
+                }
+                ExecutionStep::Command(ExecutionCommand::InvokeSkill { .. }) => {
+                    return Err(OperonError::InvalidRequest(
+                        "synchronous runtime does not host application skills; use an SDK protocol host".into(),
+                    ));
                 }
                 ExecutionStep::Complete(result) => return Ok(result.into_response()),
             };
@@ -253,6 +259,11 @@ pub(crate) fn validate_schema_definition(schema: &Value, path: &str) -> Vec<Stri
         }
     }
     errors
+}
+
+/// Validate an arbitrary typed value using Operon's portable JSON Schema subset.
+pub(crate) fn validate_schema_instance(value: &Value, schema: &Value, path: &str) -> Vec<String> {
+    validate_instance(value, schema, path)
 }
 
 fn validate_instance(value: &Value, schema: &Value, path: &str) -> Vec<String> {
@@ -477,7 +488,19 @@ pub(crate) fn plan_schema() -> Value {
             "intent": { "type": "string" },
             "subquestions": { "type": "array", "items": { "type": "string" } },
             "needs_grounding": { "type": "boolean" },
-            "answer_requirements": { "type": "array", "items": { "type": "string" } }
+            "answer_requirements": { "type": "array", "items": { "type": "string" } },
+            "skill_calls": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "skill_id": { "type": "string" },
+                        "arguments": { "type": "object", "additionalProperties": true }
+                    },
+                    "required": ["skill_id", "arguments"],
+                    "additionalProperties": false
+                }
+            }
         },
         "required": ["intent", "subquestions", "needs_grounding", "answer_requirements"],
         "additionalProperties": false
