@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Operon is the open-source harness that gives small, local models context, memory, typed skills, grounding, and verification—so they can power real apps." />
-    <meta property="og:title" content="Operon — Make small models actually useful." />
-    <meta property="og:description" content="Add reliable local AI to real apps without defaulting to the cloud." />
-    <meta property="og:image" content="https://markdsparks.github.io/operon/og-v2.png" />
+    <meta name="description" content="Keep the local model already in your app. Wrap it with Operon for an immediate reliability upgrade, then add context, skills, and memory as you grow." />
+    <meta property="og:title" content="Operon — Keep your model. Upgrade it." />
+    <meta property="og:description" content="A drop-in, progressive harness for making local AI reliable inside real apps." />
+    <meta property="og:image" content="https://markdsparks.github.io/operon/og-v3.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <title>Operon — Make small models actually useful.</title>
+    <title>Operon — Keep your model. Upgrade it.</title>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="story.css" />
   </head>
@@ -17,6 +17,7 @@
     <header class="nav wrap">
       <a class="wordmark" href="#top" aria-label="Operon home"><span></span>OPERON</a>
       <nav aria-label="Primary navigation">
+        <a href="#upgrade">Drop it in</a>
         <a href="#why">Why Operon</a>
         <a href="#runtime">How it works</a>
         <a href="#capabilities">Capabilities</a>
@@ -28,15 +29,15 @@
     <main id="top">
       <section class="hero wrap">
         <div class="hero-copy">
-          <p class="eyebrow"><i></i> Open-source local AI harness</p>
-          <h1>Make small models<br /><em>actually useful.</em></h1>
-          <p class="lede"><strong>Operon adds the runtime a model is missing:</strong> context, memory, typed skills, grounding, and verification—so real apps can use local AI without defaulting to the cloud.</p>
+          <p class="eyebrow"><i></i> Drop-in runtime for the model you already use</p>
+          <h1>Keep your model.<br /><em>Upgrade it.</em></h1>
+          <p class="lede"><strong>Put Operon around the local model already in your app.</strong> No retraining, model swap, or cloud migration. Start with planning and validation now—then add context, skills, and memory as your product grows.</p>
           <div class="actions">
-            <a class="button" href="#start">Start building <b>↓</b></a>
-            <a class="text-link" href="https://github.com/markdsparks/operon">Explore the open-source framework <span>→</span></a>
+            <a class="button" href="#start">Wrap your model <b>↓</b></a>
+            <a class="text-link" href="#upgrade">See the upgrade path <span>→</span></a>
           </div>
           <div class="hero-notes">
-            <span><b>Any</b> compatible model</span><span><b>Local</b> by default</span><span><b>Your app</b> keeps authority</span>
+            <span><b>Keep</b> your model</span><span><b>One</b> wrapper to start</span><span><b>Add more</b> when ready</span>
           </div>
         </div>
         <div class="hero-system hero-scenario" aria-label="A multi-turn app request handled with and without Operon">
@@ -51,6 +52,15 @@
               <div class="scenario-success"><span>WITH OPERON</span><strong>Resolves state, prepares the skill</strong><small>result_2 · local date · confirmation required</small></div>
             </div>
           </article>
+        </div>
+      </section>
+
+      <section class="drop-in wrap" id="upgrade">
+        <div class="drop-in-copy"><p class="eyebrow">A progressive upgrade—not a rewrite</p><h2>Wrap what you have.<br /><em>Turn on more as you need it.</em></h2><p>Operon meets you where your app is today. The first step keeps your existing provider and call path. Every capability after that is additive.</p></div>
+        <div class="upgrade-path">
+          <article class="upgrade-now"><span>01 · NOW</span><h3>Keep your model</h3><code>Operon.wrap(your_model)</code><p>Add a bounded runtime around the provider already working in your app.</p></article>
+          <article><span>02 · UPGRADE</span><h3>Get reliable output</h3><p>Turn on planning, grounding, typed results, validation, repair, and traces.</p></article>
+          <article><span>03 · GROW</span><h3>Use the full harness</h3><p>Plug in app-owned skills, session context, durable memory, and dependent actions.</p></article>
         </div>
       </section>
 
@@ -116,26 +126,27 @@
             <article><strong>+70</strong><span>percentage points in end-to-end task completion</span></article>
             <article><strong>100%</strong><span>reference resolution and argument-preparation completion</span></article>
             <article><strong>100%</strong><span>correct clarification when required input was missing</span></article>
-            <article class="metric-gap"><strong>50%</strong><span>dependent-chain completion—the measured gap we need to close</span></article>
+            <article class="metric-gap"><strong>6/12</strong><span>multi-step jobs finished end-to-end, versus 0/12 without Operon</span></article>
           </div>
         </div>
       </section>
 
       <section class="start wrap" id="start">
-        <div class="start-copy"><p class="eyebrow">Open source. Model agnostic.</p><h2>Bring your model.<br /><em>Keep your authority.</em></h2><p>Start with the Python reference runtime, integrate the Rust protocol through Swift or C, or run the browser/WASM driver in a Web Worker.</p><a class="button" href="https://github.com/markdsparks/operon">Build with Operon <b>↗</b></a></div>
+        <div class="start-copy"><p class="eyebrow">Drop in now. Grow later.</p><h2>Wrap your model.<br /><em>Keep building.</em></h2><p>Start by wrapping the provider already in your app. Add local knowledge, typed skills, session context, and memory only when your product needs them. Python, Rust, Swift/C, and browser/WASM paths keep the same host-owned architecture.</p><a class="button" href="https://github.com/markdsparks/operon">Upgrade your model with Operon <b>↗</b></a></div>
         <div class="terminal" aria-label="Python quick start code example">
           <div class="terminal-bar"><span></span><span></span><span></span><b>local terminal</b></div>
-          <pre><code><em>from</em> operon <em>import</em> Operon, SkillRegistry
+          <pre><code><em>from</em> operon <em>import</em> Operon
 
+<span># Start with the model already in your app</span>
+runtime = Operon.wrap(<mark>your_existing_model</mark>)
+result = runtime.run(<mark>"Help me plan my day"</mark>)
+
+<span># Add capabilities without replacing the model</span>
 runtime = Operon.wrap(
-  provider=<mark>your_local_model</mark>,
-  skills=SkillRegistry(<mark>app_skills</mark>),
-  memory=<mark>local_memory</mark>,
-)
-
-result = runtime.run(
-  <mark>"Continue with the last result"</mark>,
-  session_artifacts=current_context,
+  <mark>your_existing_model</mark>,
+  grounding=local_knowledge,
+  skills=app_skills,
+  memory=local_memory,
 )
 print(result.answer, result.trace.events)</code></pre>
           <button class="copy" data-copy aria-label="Copy quick start">Copy</button>

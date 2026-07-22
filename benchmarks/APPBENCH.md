@@ -19,7 +19,7 @@ four cases in each category:
 | --- | --- | --- |
 | Reference resolution | Carries typed focus across turns | “Book the second one tomorrow morning.” |
 | Argument preparation | Converts semantic references into canonical app values | Resolve “that photo” and “Maya” into app-owned IDs |
-| Dependent chains | Uses one result to choose the next capability | Find a file, then share the returned file |
+| Multi-step jobs | Uses one result to choose and complete the next action | Find a file, then share the returned file |
 | Clarification | Does not invent required missing input | Ask which workspace and time to book |
 | Safe failure | Stops before an unavailable or forbidden side effect | Reject an over-limit payment |
 

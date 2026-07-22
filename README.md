@@ -1,9 +1,10 @@
 # Operon
 
-Operon is a local-first cognitive runtime for small language models. Wrap a
-model, attach local knowledge, and get task decomposition, grounding,
-structured execution, host-controlled skills, validation, repair, and
-inspectable traces.
+Operon is a drop-in, local-first runtime for the small language model already
+in your app. Keep your existing provider, put Operon around it, and get an
+immediate upgrade in planning, structured execution, validation, repair, and
+inspectable traces. Then add local knowledge, app-owned skills, session context,
+and memory as your product grows.
 
 ```text
 query → classify → retrieve → generate → validate → repair → response
@@ -20,7 +21,8 @@ constrained models more useful through orchestration and explicit structure.
 **Early AppBench evidence:** on 20 synthetic app tasks repeated three times,
 the same local Qwen3 4B model completed 90% with Operon versus 20% in a raw
 full-state tool loop. Reference resolution, argument preparation, and
-clarification reached 100%; dependent chains remain at 50%. Read the
+clarification reached 100%; 6 of 12 multi-step runs finished end-to-end,
+versus 0 of 12 without Operon. Read the
 [methodology](benchmarks/APPBENCH.md) and
 [development results](benchmarks/APPBENCH_RESULTS.md). This is engineering
 evidence, not a general model ranking.

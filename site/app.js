@@ -1,15 +1,16 @@
 const copyButton = document.querySelector("[data-copy]");
-const code = `from operon import Operon, SkillRegistry
+const code = `from operon import Operon
 
+# Start with the model already in your app
+runtime = Operon.wrap(your_existing_model)
+result = runtime.run("Help me plan my day")
+
+# Add capabilities without replacing the model
 runtime = Operon.wrap(
-  provider=your_local_model,
-  skills=SkillRegistry(app_skills),
+  your_existing_model,
+  grounding=local_knowledge,
+  skills=app_skills,
   memory=local_memory,
-)
-
-result = runtime.run(
-  "Continue with the last result",
-  session_artifacts=current_context,
 )
 print(result.answer, result.trace.events)`;
 

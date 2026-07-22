@@ -28,7 +28,7 @@ skill-or-clarification policy, repeat suppression, and bounded replanning.
 | --- | ---: | ---: |
 | Reference resolution | 0% | **100%** |
 | Argument preparation | 0% | **100%** |
-| Dependent chains | 0% | **50%** |
+| Multi-step jobs | 0 of 12 runs | **6 of 12 runs** |
 | Clarification | 0% | **100%** |
 | Safe failure | **100%** | **100%** |
 
@@ -43,8 +43,8 @@ Operon's strongest result is not better prose. It is reliable conversion of
 ambiguous language into app-owned state and exact arguments, plus a question
 instead of an invented value when state is missing.
 
-The important remaining gap is also clear: the 4B model completed only half of
-the dependent chains. In the misses it kept selecting the lookup capability
+The important remaining gap is also clear: the 4B model finished only 6 of 12
+multi-step jobs. In the misses it kept selecting the lookup capability
 instead of the follow-on action. Operon prevented duplicate invocation, but it
 could not make the model choose the missing next capability. Task-completeness
 verification and better constrained next-action selection are now measurable
