@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://operon.dev/spec/0.1/execution-event.schema.json",
+  "$id": "https://operon.dev/spec/0.2/execution-event.schema.json",
   "title": "Operon execution event",
   "oneOf": [
     {
       "type": "object",
       "properties": {
         "kind": { "const": "generation_completed" },
-        "protocol_version": { "const": "0.1" },
+        "protocol_version": { "const": "0.2" },
         "request_id": { "type": "integer", "minimum": 1 },
         "response": { "type": "object" }
       },
@@ -18,7 +18,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "retrieval_completed" },
-        "protocol_version": { "const": "0.1" },
+        "protocol_version": { "const": "0.2" },
         "request_id": { "type": "integer", "minimum": 1 },
         "sources": { "type": "array", "items": { "type": "object" } }
       },
@@ -29,7 +29,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "memory_search_completed" },
-        "protocol_version": { "const": "0.1" },
+        "protocol_version": { "const": "0.2" },
         "request_id": { "type": "integer", "minimum": 1 },
         "records": { "type": "array", "items": { "type": "object" } }
       },
@@ -40,7 +40,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "output_validated" },
-        "protocol_version": { "const": "0.1" },
+        "protocol_version": { "const": "0.2" },
         "request_id": { "type": "integer", "minimum": 1 },
         "errors": { "type": "array", "items": { "type": "string" } }
       },
@@ -51,7 +51,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "command_failed" },
-        "protocol_version": { "const": "0.1" },
+        "protocol_version": { "const": "0.2" },
         "request_id": { "type": "integer", "minimum": 1 },
         "failure": {
           "enum": ["provider", "grounding", "memory", "cancelled", "timeout"]

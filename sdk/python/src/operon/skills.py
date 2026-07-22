@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
-from .models import SkillCall, SkillDescriptor, SkillResult
+from .models import Clarification, SessionArtifact, SkillCall, SkillDescriptor, SkillResult
 from .schema import validate_instance, validate_schema_definition
 
 
@@ -19,6 +19,23 @@ from .schema import validate_instance, validate_schema_definition
 class Skill:
     descriptor: SkillDescriptor
     handler: Callable[[dict[str, Any]], SkillResult]
+    prepare: Callable[[dict[str, Any], tuple[SessionArtifact, ...]], "SkillPreparation"] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SkillPreparation:
+    kind: str
+    arguments: dict[str, Any] | None = None
+    clarification: Clarification | None = None
+    reason: str | None = None
+
+    @classmethod
+    def ready(cls, arguments: dict[str, Any]) -> "SkillPreparation":
+        return cls("ready", arguments=arguments)
+
+    @classmethod
+    def needs_input(cls, prompt: str, *, missing_fields: tuple[str, ...] = (), skill_id: str | None = None) -> "SkillPreparation":
+        return cls("needs_input", clarification=Clarification(prompt, missing_fields, skill_id))
 
 
 class SkillRegistry:
@@ -46,15 +63,30 @@ class SkillRegistry:
     def descriptors(self) -> tuple[SkillDescriptor, ...]:
         return tuple(skill.descriptor for skill in self._skills.values())
 
-    def authorized_calls(self, calls: Iterable[SkillCall]) -> tuple[SkillCall, ...]:
+    def known_calls(self, calls: Iterable[SkillCall]) -> tuple[SkillCall, ...]:
         accepted: list[SkillCall] = []
         for call in calls:
             skill = self._skills.get(call.skill_id)
             if skill is None:
                 continue
-            if not validate_instance(call.arguments, skill.descriptor.input_schema):
-                accepted.append(call)
+            accepted.append(call)
         return tuple(accepted)
+
+    def prepare(self, call: SkillCall, artifacts: tuple[SessionArtifact, ...]) -> SkillPreparation:
+        skill = self._skills.get(call.skill_id)
+        if skill is None:
+            return SkillPreparation("rejected", reason=f"skill is not registered: {call.skill_id}")
+        prepared = skill.prepare(call.arguments, artifacts) if skill.prepare else SkillPreparation.ready(call.arguments)
+        if prepared.kind != "ready":
+            return prepared
+        if prepared.arguments is None:
+            return SkillPreparation("rejected", reason="prepared skill call has no arguments")
+        errors = validate_instance(prepared.arguments, skill.descriptor.input_schema)
+        if errors:
+            return SkillPreparation("needs_input", clarification=Clarification(
+                "I need more information before I can complete that action.", tuple(errors), call.skill_id
+            ))
+        return prepared
 
     def invoke(self, call: SkillCall) -> SkillResult:
         skill = self._skills.get(call.skill_id)

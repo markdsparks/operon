@@ -26,14 +26,16 @@ InferenceProvider
 ## Current execution lifecycle
 
 1. Validate the request and local-only policy.
-2. Take a simple-query fast path or ask the model for a typed plan.
-3. Run any model-requested, application-registered skills through the host.
-4. Retrieve local context using the query, intent, and subquestions.
-5. Fit skill results and ranked source chunks into the configured context budget.
-6. Generate a structured answer following the plan.
-7. Validate answer shape, confidence, provenance, and inline citations.
-8. Run a targeted repair up to the configured limit.
-9. Return the answer and an execution trace.
+2. Load bounded typed session artifacts before planning, when configured.
+3. Take a simple-query fast path or ask the model for a typed plan.
+4. Prepare any partial skill call against host-owned artifacts, then invoke it.
+5. Replan a bounded number of times after a skill result when another action is needed.
+6. Retrieve local context using the query, intent, and subquestions.
+7. Fit skill results and ranked source chunks into the configured context budget.
+8. Generate a structured answer following the plan.
+9. Validate answer shape, confidence, provenance, and inline citations.
+10. Run a targeted repair up to the configured limit.
+11. Return the answer, a typed clarification, or an execution trace.
 
 ## Stable boundaries
 
@@ -56,6 +58,12 @@ can request an `InvokeSkill` command only for a descriptor configured by the
 application. The host performs the call, and the core validates the returned
 value before it becomes attributable answer context. This keeps permissions,
 side effects, device APIs, and business logic in the app.
+
+Typed session artifacts are an independent, ephemeral state layer. They carry
+an identity, kind, semantic summary, host-private value, and optional expiry.
+They let applications maintain a current place, forecast window, selected view,
+or draft without promoting turn state into durable memory or asking the model to
+infer it from natural-language history.
 
 `Policy` holds explicit execution constraints. Platform hosts will eventually
 extend this with energy state, thermal state, foreground/background execution,

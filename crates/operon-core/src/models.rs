@@ -32,6 +32,12 @@ pub struct ExecutionPolicy {
     pub max_context_chars: usize,
     pub max_sources: usize,
     pub request_timeout_ms: u64,
+    /// Limits model-directed dependent capability chains after a result.
+    pub max_replans: usize,
+    /// Prevents a generic model answer when this session is expected to perform
+    /// an application capability. The result must be a skill action or an
+    /// explicit clarification.
+    pub require_skill_or_clarification: bool,
 }
 
 impl Default for ExecutionPolicy {
@@ -44,6 +50,8 @@ impl Default for ExecutionPolicy {
             max_context_chars: 12_000,
             max_sources: 5,
             request_timeout_ms: 60_000,
+            max_replans: 2,
+            require_skill_or_clarification: false,
         }
     }
 }
@@ -172,6 +180,51 @@ pub struct SkillResult {
     pub output: Value,
     #[serde(default)]
     pub sources: Vec<Source>,
+    /// Ephemeral typed state published by the host for this and later turns.
+    #[serde(default)]
+    pub artifacts: Vec<SessionArtifact>,
+}
+
+/// Host-owned, short-lived state from recent interaction. `summary` is the
+/// semantic projection allowed into model context; `value` stays available to
+/// host preparation and invocation code but is never inserted into prompts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionArtifact {
+    pub id: String,
+    pub kind: String,
+    pub summary: String,
+    pub value: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
+}
+
+/// The model-safe reference passed to planning and preparation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactReference {
+    pub id: String,
+    pub kind: String,
+    pub summary: String,
+}
+
+impl From<&SessionArtifact> for ArtifactReference {
+    fn from(artifact: &SessionArtifact) -> Self {
+        Self {
+            id: artifact.id.clone(),
+            kind: artifact.kind.clone(),
+            summary: artifact.summary.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Clarification {
+    pub prompt: String,
+    #[serde(default)]
+    pub missing_fields: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_id: Option<String>,
 }
 
 /// Adapter boundary for lexical, vector, hybrid, or platform-native indexes.
@@ -265,12 +318,15 @@ pub struct Plan {
     /// Optional calls selected from the session's declared skill registry.
     #[serde(default)]
     pub skill_calls: Vec<SkillCall>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clarification: Option<Clarification>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stage {
     Classify,
+    Replan,
     Skill,
     Ground,
     Generate,
@@ -329,4 +385,5 @@ pub struct OperonResponse {
     pub trace: ExecutionTrace,
     pub declared_source_ids: Vec<String>,
     pub was_repaired: bool,
+    pub clarification: Option<Clarification>,
 }

@@ -25,13 +25,13 @@ pub struct OperonSessionHandle {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum FfiStep {
     Command { command: crate::ExecutionCommand },
-    Complete { result: crate::ExecutionResult },
+    Complete { result: Box<crate::ExecutionResult> },
 }
 
 /// Returns the ABI version string owned by the library. Do not free this value.
 #[unsafe(no_mangle)]
 pub extern "C" fn operon_abi_version() -> *const c_char {
-    c"0.1".as_ptr()
+    c"0.2".as_ptr()
 }
 
 /// Creates an opaque execution-session handle.
@@ -188,7 +188,7 @@ unsafe fn finish_step(
 fn serialize_step(step: ExecutionStep) -> Result<String, String> {
     let step = match step {
         ExecutionStep::Command(command) => FfiStep::Command { command },
-        ExecutionStep::Complete(result) => FfiStep::Complete { result: *result },
+        ExecutionStep::Complete(result) => FfiStep::Complete { result },
     };
     serde_json::to_string(&step).map_err(|error| format!("failed to serialize step: {error}"))
 }
@@ -242,7 +242,7 @@ mod tests {
         unsafe { operon_string_free(step) };
 
         let event = CString::new(
-            r#"{"kind":"generation_completed","protocol_version":"0.1","request_id":1,"response":{"text":"{\"answer\":\"Four.\",\"confidence\":0.9,\"used_source_ids\":[]}","prompt_tokens":null,"completion_tokens":null,"finish_reason":null}}"#,
+            r#"{"kind":"generation_completed","protocol_version":"0.2","request_id":1,"response":{"text":"{\"answer\":\"Four.\",\"confidence\":0.9,\"used_source_ids\":[]}","prompt_tokens":null,"completion_tokens":null,"finish_reason":null}}"#,
         )
         .unwrap();
         let status =

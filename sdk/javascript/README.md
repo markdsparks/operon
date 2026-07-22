@@ -34,6 +34,9 @@ const result = await operon.run(
   { has_grounding: true, has_application_validator: true },
   {
     generate: async ({ request }) => nearcastWebLLM(request),
+    loadSession: async ({ session_id, limit }) => loadTypedArtifacts(session_id, limit),
+    prepareSkill: async ({ skill_id, partial_arguments, artifacts }) =>
+      prepareApplicationSkill(skill_id, partial_arguments, artifacts),
     retrieve: async ({ query, limit }) => weatherSnapshotSources(query, limit),
     invokeSkill: async ({ skill_id, arguments, requires_user_confirmation }) =>
       runApplicationSkill(skill_id, arguments, requires_user_confirmation),
@@ -43,6 +46,8 @@ const result = await operon.run(
 ```
 
 `generate` returns a protocol `GenerationResponse`; `retrieve` returns `Source[]`;
+`loadSession` returns bounded typed `SessionArtifact[]` before planning;
+`prepareSkill` returns `ready`, `needs_input`, `rejected`, or `unavailable`;
 `searchMemory` returns `MemoryRecord[]` when enabled; and `validateOutput`
 returns a string array of application validation errors. `invokeSkill` returns
 `{ output, sources }` after the app has performed any required confirmation.

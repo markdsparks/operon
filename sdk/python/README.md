@@ -105,3 +105,10 @@ assistant = Operon.wrap(provider, skills=skills)
 
 Skill results are validated and become citable local context. The application,
 not the model, owns the handler, permission prompt, and every side effect.
+
+Skills may also prepare a partial model call against typed, ephemeral session
+artifacts. Pass `session_artifacts` to `run` (or configure `artifact_loader`)
+with a semantic `summary` and a host-private `value`; only the summary reaches
+the planner. A preparation callback can resolve `last_result` into canonical
+arguments or return `SkillPreparation.needs_input(...)` for a structured
+clarification.

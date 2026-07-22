@@ -10,16 +10,23 @@ use crate::runtime::{
     validate_schema_instance,
 };
 use crate::{
-    ContextBudget, ExecutionPolicy, ExecutionTrace, GenerationRequest, GenerationResponse,
-    MemoryRecord, MemoryScope, Message, OperonError, OperonResponse, OperonResult, Plan, SkillCall,
-    SkillDescriptor, SkillResult, Source, Stage, Strategy, TraceEvent, compile_context,
+    ArtifactReference, Clarification, ContextBudget, ExecutionPolicy, ExecutionTrace,
+    GenerationRequest, GenerationResponse, MemoryRecord, MemoryScope, Message, OperonError,
+    OperonResponse, OperonResult, Plan, SessionArtifact, SkillCall, SkillDescriptor, SkillResult,
+    Source, Stage, Strategy, TraceEvent, compile_context,
 };
 
-pub const EXECUTION_PROTOCOL_VERSION: &str = "0.1";
+pub const EXECUTION_PROTOCOL_VERSION: &str = "0.2";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExecutionCommand {
+    LoadSession {
+        protocol_version: String,
+        request_id: u64,
+        session_id: String,
+        limit: usize,
+    },
     Generate {
         protocol_version: String,
         request_id: u64,
@@ -53,16 +60,27 @@ pub enum ExecutionCommand {
         arguments: Value,
         requires_user_confirmation: bool,
     },
+    /// Lets the host turn semantic references and partial model arguments into
+    /// canonical, fully validated arguments before any capability is invoked.
+    PrepareSkill {
+        protocol_version: String,
+        request_id: u64,
+        skill_id: String,
+        partial_arguments: Value,
+        artifacts: Vec<ArtifactReference>,
+    },
 }
 
 impl ExecutionCommand {
     pub fn request_id(&self) -> u64 {
         match self {
-            Self::Generate { request_id, .. }
+            Self::LoadSession { request_id, .. }
+            | Self::Generate { request_id, .. }
             | Self::Retrieve { request_id, .. }
             | Self::SearchMemory { request_id, .. }
             | Self::ValidateOutput { request_id, .. }
-            | Self::InvokeSkill { request_id, .. } => *request_id,
+            | Self::InvokeSkill { request_id, .. }
+            | Self::PrepareSkill { request_id, .. } => *request_id,
         }
     }
 }
@@ -73,6 +91,7 @@ pub enum HostFailureKind {
     Provider,
     Grounding,
     Memory,
+    Session,
     Skill,
     Cancelled,
     Timeout,
@@ -81,6 +100,11 @@ pub enum HostFailureKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExecutionEvent {
+    SessionLoaded {
+        protocol_version: String,
+        request_id: u64,
+        artifacts: Vec<SessionArtifact>,
+    },
     GenerationCompleted {
         protocol_version: String,
         request_id: u64,
@@ -106,6 +130,11 @@ pub enum ExecutionEvent {
         request_id: u64,
         result: SkillResult,
     },
+    SkillPrepared {
+        protocol_version: String,
+        request_id: u64,
+        outcome: SkillPreparation,
+    },
     CommandFailed {
         protocol_version: String,
         request_id: u64,
@@ -117,18 +146,23 @@ pub enum ExecutionEvent {
 impl ExecutionEvent {
     fn request_id(&self) -> u64 {
         match self {
-            Self::GenerationCompleted { request_id, .. }
+            Self::SessionLoaded { request_id, .. }
+            | Self::GenerationCompleted { request_id, .. }
             | Self::RetrievalCompleted { request_id, .. }
             | Self::MemorySearchCompleted { request_id, .. }
             | Self::OutputValidated { request_id, .. }
             | Self::SkillCompleted { request_id, .. }
+            | Self::SkillPrepared { request_id, .. }
             | Self::CommandFailed { request_id, .. } => *request_id,
         }
     }
 
     fn protocol_version(&self) -> &str {
         match self {
-            Self::GenerationCompleted {
+            Self::SessionLoaded {
+                protocol_version, ..
+            }
+            | Self::GenerationCompleted {
                 protocol_version, ..
             }
             | Self::RetrievalCompleted {
@@ -141,6 +175,9 @@ impl ExecutionEvent {
                 protocol_version, ..
             }
             | Self::SkillCompleted {
+                protocol_version, ..
+            }
+            | Self::SkillPrepared {
                 protocol_version, ..
             }
             | Self::CommandFailed {
@@ -161,6 +198,18 @@ pub struct ExecutionResult {
     pub trace: Vec<TraceEvent>,
     pub declared_source_ids: Vec<String>,
     pub was_repaired: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clarification: Option<Clarification>,
+}
+
+/// Host response for partial skill-call preparation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SkillPreparation {
+    Ready { arguments: Value },
+    NeedsInput { clarification: Clarification },
+    Rejected { reason: String },
+    Unavailable { reason: String },
 }
 
 impl ExecutionResult {
@@ -174,6 +223,7 @@ impl ExecutionResult {
             trace: ExecutionTrace::from_events(self.trace),
             declared_source_ids: self.declared_source_ids,
             was_repaired: self.was_repaired,
+            clarification: self.clarification,
         }
     }
 }
@@ -199,15 +249,21 @@ pub struct SessionConfig {
     /// Application-owned capabilities that the planner may request. An empty
     /// list means no capability invocation is possible.
     pub skills: Vec<SkillDescriptor>,
+    /// When set, the session loads bounded typed artifacts before planning.
+    pub session_id: Option<String>,
+    pub max_session_artifacts: usize,
 }
 
 #[derive(Debug)]
 enum Pending {
     None,
+    SessionLoad(u64),
     Plan(u64),
+    Replan(u64),
     Retrieval(u64),
     MemorySearch(u64),
     Skill(u64),
+    SkillPreparation(u64),
     Answer(u64),
     Repair(u64),
     ApplicationValidation(u64),
@@ -223,8 +279,10 @@ pub struct ExecutionSession {
     plan: Option<Plan>,
     sources: Vec<Source>,
     memories: Vec<MemoryRecord>,
+    artifacts: Vec<SessionArtifact>,
     skill_sources: Vec<Source>,
     next_skill_index: usize,
+    replan_attempts: usize,
     repair_attempts: usize,
     was_repaired: bool,
     pending_payload: Option<AnswerPayload>,
@@ -276,8 +334,10 @@ impl ExecutionSession {
             plan: None,
             sources: Vec::new(),
             memories: Vec::new(),
+            artifacts: Vec::new(),
             skill_sources: Vec::new(),
             next_skill_index: 0,
+            replan_attempts: 0,
             repair_attempts: 0,
             was_repaired: false,
             pending_payload: None,
@@ -290,6 +350,20 @@ impl ExecutionSession {
                 "execution session has already started".into(),
             ));
         }
+        if let Some(session_id) = self.config.session_id.clone() {
+            let request_id = self.allocate_request_id();
+            self.pending = Pending::SessionLoad(request_id);
+            return Ok(ExecutionStep::Command(ExecutionCommand::LoadSession {
+                protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+                request_id,
+                session_id,
+                limit: self.config.max_session_artifacts,
+            }));
+        }
+        self.start_after_session()
+    }
+
+    fn start_after_session(&mut self) -> OperonResult<ExecutionStep> {
         let should_plan = self.config.policy.planning == Strategy::Always
             || (self.config.policy.planning == Strategy::Adaptive && is_complex(&self.query));
         if should_plan {
@@ -301,13 +375,14 @@ impl ExecutionSession {
             needs_grounding: self.config.has_grounding,
             answer_requirements: Vec::new(),
             skill_calls: Vec::new(),
+            clarification: None,
         });
         self.trace.add(
             Stage::Classify,
             "used fast-path plan",
             json!({ "complex": false }),
         );
-        Ok(self.after_plan())
+        self.route_plan()
     }
 
     pub fn resume(&mut self, event: ExecutionEvent) -> OperonResult<ExecutionStep> {
@@ -318,10 +393,13 @@ impl ExecutionSession {
             )));
         }
         let expected = match self.pending {
-            Pending::Plan(id)
+            Pending::SessionLoad(id)
+            | Pending::Plan(id)
+            | Pending::Replan(id)
             | Pending::Retrieval(id)
             | Pending::MemorySearch(id)
             | Pending::Skill(id)
+            | Pending::SkillPreparation(id)
             | Pending::Answer(id)
             | Pending::Repair(id)
             | Pending::ApplicationValidation(id) => id,
@@ -349,7 +427,7 @@ impl ExecutionSession {
             self.pending = Pending::Complete;
             return Err(match failure {
                 HostFailureKind::Grounding => OperonError::Grounding(message),
-                HostFailureKind::Memory => OperonError::Memory(message),
+                HostFailureKind::Memory | HostFailureKind::Session => OperonError::Memory(message),
                 HostFailureKind::Skill => OperonError::Provider(message),
                 HostFailureKind::Provider
                 | HostFailureKind::Cancelled
@@ -358,8 +436,16 @@ impl ExecutionSession {
         }
 
         match (&self.pending, event) {
+            (Pending::SessionLoad(_), ExecutionEvent::SessionLoaded { artifacts, .. }) => {
+                self.artifacts = artifacts;
+                self.trace.add(Stage::Ground, "loaded bounded typed session artifacts", json!({ "artifacts": self.artifacts.len(), "kinds": self.artifacts.iter().map(|artifact| &artifact.kind).collect::<Vec<_>>() }));
+                self.start_after_session()
+            }
             (Pending::Plan(_), ExecutionEvent::GenerationCompleted { response, .. }) => {
                 self.accept_plan(response)
+            }
+            (Pending::Replan(_), ExecutionEvent::GenerationCompleted { response, .. }) => {
+                self.accept_replan(response)
             }
             (Pending::Retrieval(_), ExecutionEvent::RetrievalCompleted { sources, .. }) => {
                 self.sources = self.skill_sources.clone();
@@ -386,6 +472,9 @@ impl ExecutionSession {
             }
             (Pending::Skill(_), ExecutionEvent::SkillCompleted { result, .. }) => {
                 self.accept_skill_result(result)
+            }
+            (Pending::SkillPreparation(_), ExecutionEvent::SkillPrepared { outcome, .. }) => {
+                self.accept_skill_preparation(outcome)
             }
             (Pending::Answer(_), ExecutionEvent::GenerationCompleted { response, .. }) => {
                 self.trace_generation(Stage::Generate, &response);
@@ -419,8 +508,9 @@ impl ExecutionSession {
                 messages: vec![
                     Message::system(PLAN_SYSTEM_PROMPT),
                     Message::user(format!(
-                        "QUERY:\n{}\n\nAUTHORIZED SKILLS:\n{}",
+                        "QUERY:\n{}\n\nTYPED SESSION ARTIFACTS (references only):\n{}\n\nAUTHORIZED SKILLS:\n{}",
                         self.query,
+                        self.artifact_catalog(),
                         self.skill_catalog()
                     )),
                 ],
@@ -442,7 +532,7 @@ impl ExecutionSession {
             .retain(|item| !item.trim().is_empty());
         let requested_skill_calls = plan.skill_calls.len();
         plan.skill_calls
-            .retain(|call| self.is_valid_skill_call(call));
+            .retain(|call| self.is_known_skill_call(call));
         plan.needs_grounding = self.config.has_grounding;
         if plan.intent.is_empty() {
             return Err(OperonError::InvalidModelOutput(
@@ -464,25 +554,40 @@ impl ExecutionSession {
             }),
         );
         self.plan = Some(plan);
-        Ok(self.after_plan())
+        self.route_plan()
     }
 
-    fn after_plan(&mut self) -> ExecutionStep {
+    fn route_plan(&mut self) -> OperonResult<ExecutionStep> {
+        if let Some(clarification) = self
+            .plan
+            .as_ref()
+            .and_then(|plan| plan.clarification.clone())
+        {
+            return Ok(self.complete_clarification(clarification));
+        }
         if let Some(command) = self.next_skill_command() {
-            return command;
+            return Ok(command);
+        }
+        if self.config.policy.require_skill_or_clarification {
+            return Ok(self.complete_clarification(Clarification {
+                prompt: "I need a little more information before I can complete that action."
+                    .into(),
+                missing_fields: Vec::new(),
+                skill_id: None,
+            }));
         }
         if let Some(scope) = self.config.memory_scope.clone() {
             let request_id = self.allocate_request_id();
             self.pending = Pending::MemorySearch(request_id);
-            return ExecutionStep::Command(ExecutionCommand::SearchMemory {
+            return Ok(ExecutionStep::Command(ExecutionCommand::SearchMemory {
                 protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
                 request_id,
                 query: self.context_query(),
                 scope,
                 limit: self.config.policy.max_sources,
-            });
+            }));
         }
-        self.after_memory()
+        Ok(self.after_memory())
     }
 
     fn after_memory(&mut self) -> ExecutionStep {
@@ -523,16 +628,20 @@ impl ExecutionSession {
         serde_json::to_string_pretty(&self.config.skills).expect("skill catalog serializes")
     }
 
-    fn is_valid_skill_call(&self, call: &SkillCall) -> bool {
-        let Some(skill) = self
-            .config
+    fn artifact_catalog(&self) -> String {
+        if self.artifacts.is_empty() {
+            return "(none)".into();
+        }
+        let references: Vec<ArtifactReference> =
+            self.artifacts.iter().map(ArtifactReference::from).collect();
+        serde_json::to_string_pretty(&references).expect("artifact references serialize")
+    }
+
+    fn is_known_skill_call(&self, call: &SkillCall) -> bool {
+        self.config
             .skills
             .iter()
-            .find(|skill| skill.id == call.skill_id)
-        else {
-            return false;
-        };
-        validate_schema_instance(&call.arguments, &skill.input_schema, "skill arguments").is_empty()
+            .any(|skill| skill.id == call.skill_id)
     }
 
     fn next_skill_command(&mut self) -> Option<ExecutionStep> {
@@ -542,20 +651,23 @@ impl ExecutionSession {
             .skill_calls
             .get(self.next_skill_index)?
             .clone();
-        let requires_user_confirmation = self
+        let skill_exists = self
             .config
             .skills
             .iter()
-            .find(|skill| skill.id == call.skill_id)?
-            .requires_user_confirmation;
+            .find(|skill| skill.id == call.skill_id)
+            .is_some();
+        if !skill_exists {
+            return None;
+        }
         let request_id = self.allocate_request_id();
-        self.pending = Pending::Skill(request_id);
-        Some(ExecutionStep::Command(ExecutionCommand::InvokeSkill {
+        self.pending = Pending::SkillPreparation(request_id);
+        Some(ExecutionStep::Command(ExecutionCommand::PrepareSkill {
             protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
             request_id,
             skill_id: call.skill_id,
-            arguments: call.arguments,
-            requires_user_confirmation,
+            partial_arguments: call.arguments,
+            artifacts: self.artifacts.iter().map(ArtifactReference::from).collect(),
         }))
     }
 
@@ -590,16 +702,118 @@ impl ExecutionSession {
             score: 1.0,
         });
         self.skill_sources.extend(result.sources);
+        self.artifacts.extend(result.artifacts);
         self.trace.add(
             Stage::Skill,
             "completed application-owned skill",
-            json!({ "skill_id": skill.id, "sources": self.skill_sources.len() }),
+            json!({ "skill_id": skill.id, "sources": self.skill_sources.len(), "artifacts": self.artifacts.len() }),
         );
-        self.next_skill_index += 1;
-        if let Some(command) = self.next_skill_command() {
-            return Ok(command);
+        self.next_skill_index = 0;
+        if self.replan_attempts < self.config.policy.max_replans {
+            self.replan_attempts += 1;
+            return Ok(self.replan_command());
         }
         Ok(self.after_plan_without_skills())
+    }
+
+    fn accept_skill_preparation(
+        &mut self,
+        outcome: SkillPreparation,
+    ) -> OperonResult<ExecutionStep> {
+        let call = self
+            .plan
+            .as_ref()
+            .and_then(|plan| plan.skill_calls.get(self.next_skill_index))
+            .cloned()
+            .ok_or_else(|| {
+                OperonError::InvalidRequest("skill preparation has no pending call".into())
+            })?;
+        let skill = self
+            .config
+            .skills
+            .iter()
+            .find(|skill| skill.id == call.skill_id)
+            .ok_or_else(|| {
+                OperonError::InvalidRequest(
+                    "skill preparation refers to an unavailable skill".into(),
+                )
+            })?;
+        let skill_id = skill.id.clone();
+        let requires_user_confirmation = skill.requires_user_confirmation;
+        match outcome {
+            SkillPreparation::Ready { arguments } => {
+                let errors =
+                    validate_schema_instance(&arguments, &skill.input_schema, "skill arguments");
+                if !errors.is_empty() {
+                    return Err(OperonError::Validation(errors));
+                }
+                let request_id = self.allocate_request_id();
+                self.pending = Pending::Skill(request_id);
+                Ok(ExecutionStep::Command(ExecutionCommand::InvokeSkill {
+                    protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+                    request_id,
+                    skill_id,
+                    arguments,
+                    requires_user_confirmation,
+                }))
+            }
+            SkillPreparation::NeedsInput { clarification } => {
+                Ok(self.complete_clarification(clarification))
+            }
+            SkillPreparation::Rejected { reason } | SkillPreparation::Unavailable { reason } => {
+                Ok(self.complete_clarification(Clarification {
+                    prompt: reason,
+                    missing_fields: Vec::new(),
+                    skill_id: Some(call.skill_id),
+                }))
+            }
+        }
+    }
+
+    fn replan_command(&mut self) -> ExecutionStep {
+        let request_id = self.allocate_request_id();
+        self.pending = Pending::Replan(request_id);
+        ExecutionStep::Command(ExecutionCommand::Generate {
+            protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+            request_id,
+            stage: Stage::Replan,
+            request: GenerationRequest {
+                messages: vec![
+                    Message::system(
+                        "You are Operon's bounded next-action planner. Use typed artifact references and completed skill results to select at most one next authorized skill, request clarification, or return no skill when ready to answer. Return JSON only.",
+                    ),
+                    Message::user(format!(
+                        "QUERY:\n{}\n\nTYPED SESSION ARTIFACTS (references only):\n{}\n\nCOMPLETED SKILL RESULTS:\n{}\n\nAUTHORIZED SKILLS:\n{}",
+                        self.query,
+                        self.artifact_catalog(),
+                        format_sources(&self.skill_sources, self.config.policy.max_context_chars),
+                        self.skill_catalog()
+                    )),
+                ],
+                schema: Some(plan_schema()),
+                temperature: 0.0,
+                max_tokens: Some(500),
+                reasoning_effort: Some("none".into()),
+                timeout_ms: self.config.policy.request_timeout_ms,
+            },
+        })
+    }
+
+    fn accept_replan(&mut self, response: GenerationResponse) -> OperonResult<ExecutionStep> {
+        let next: Plan = parse_model_json(&response.text)?;
+        let calls: Vec<SkillCall> = next
+            .skill_calls
+            .into_iter()
+            .filter(|call| self.is_known_skill_call(call))
+            .take(1)
+            .collect();
+        let clarification = next.clarification;
+        let plan = self.plan.as_mut().expect("plan exists");
+        plan.skill_calls = calls;
+        plan.clarification = clarification;
+        self.next_skill_index = 0;
+        self.trace.add(Stage::Replan, "selected bounded next action", json!({ "attempt": self.replan_attempts, "skill_calls": plan.skill_calls.len(), "has_clarification": plan.clarification.is_some() }));
+        self.route_plan()
     }
 
     fn after_plan_without_skills(&mut self) -> ExecutionStep {
@@ -854,6 +1068,30 @@ impl ExecutionSession {
             trace: std::mem::take(&mut self.trace.events),
             declared_source_ids,
             was_repaired: self.was_repaired,
+            clarification: None,
+        }))
+    }
+
+    fn complete_clarification(&mut self, clarification: Clarification) -> ExecutionStep {
+        self.trace.add(
+            Stage::Validate,
+            "completed with structured clarification",
+            json!({
+                "skill_id": clarification.skill_id, "missing_fields": clarification.missing_fields,
+            }),
+        );
+        self.pending = Pending::Complete;
+        ExecutionStep::Complete(Box::new(ExecutionResult {
+            protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+            answer: clarification.prompt.clone(),
+            output: None,
+            sources: Vec::new(),
+            confidence: 1.0,
+            plan: self.plan.clone().expect("plan exists"),
+            trace: std::mem::take(&mut self.trace.events),
+            declared_source_ids: Vec::new(),
+            was_repaired: false,
+            clarification: Some(clarification),
         }))
     }
 

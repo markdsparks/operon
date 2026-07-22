@@ -214,7 +214,7 @@ public final class OperonCoreDriver {
   ) throws -> String {
     var event = values
     event["kind"] = kind
-    event["protocol_version"] = "0.1"
+    event["protocol_version"] = "0.2"
     event["request_id"] = requestID
     return try stringify(event)
   }

@@ -77,6 +77,8 @@ impl<'a> OperonRuntime<'a> {
                 has_application_validator: false,
                 memory_scope: None,
                 skills: Vec::new(),
+                session_id: None,
+                max_session_artifacts: 12,
             },
         )?;
         let mut step = session.start()?;
@@ -115,6 +117,11 @@ impl<'a> OperonRuntime<'a> {
                         "synchronous runtime does not yet host durable-memory search".into(),
                     ));
                 }
+                ExecutionStep::Command(ExecutionCommand::LoadSession { .. }) => {
+                    return Err(OperonError::Memory(
+                        "synchronous runtime does not host typed session artifacts".into(),
+                    ));
+                }
                 ExecutionStep::Command(ExecutionCommand::ValidateOutput { .. }) => {
                     return Err(OperonError::Validation(vec![
                         "synchronous runtime does not host application validation".into(),
@@ -123,6 +130,11 @@ impl<'a> OperonRuntime<'a> {
                 ExecutionStep::Command(ExecutionCommand::InvokeSkill { .. }) => {
                     return Err(OperonError::InvalidRequest(
                         "synchronous runtime does not host application skills; use an SDK protocol host".into(),
+                    ));
+                }
+                ExecutionStep::Command(ExecutionCommand::PrepareSkill { .. }) => {
+                    return Err(OperonError::InvalidRequest(
+                        "synchronous runtime does not host skill preparation; use an SDK protocol host".into(),
                     ));
                 }
                 ExecutionStep::Complete(result) => return Ok(result.into_response()),
@@ -500,6 +512,16 @@ pub(crate) fn plan_schema() -> Value {
                     "required": ["skill_id", "arguments"],
                     "additionalProperties": false
                 }
+            }
+            ,"clarification": {
+                "type": "object",
+                "properties": {
+                    "prompt": { "type": "string" },
+                    "missing_fields": { "type": "array", "items": { "type": "string" } },
+                    "skill_id": { "type": "string" }
+                },
+                "required": ["prompt"],
+                "additionalProperties": false
             }
         },
         "required": ["intent", "subquestions", "needs_grounding", "answer_requirements"],

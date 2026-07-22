@@ -18,6 +18,6 @@ const result = await createBrowserDriver(wasm).run("Hello", {}, {
   })
 });
 
-assert.equal(wasm.execution_protocol_version(), "0.1");
+assert.equal(wasm.execution_protocol_version(), "0.2");
 assert.equal(result.answer, "Hello from local Operon.");
 console.log("WASM protocol smoke passed");

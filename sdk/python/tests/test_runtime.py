@@ -15,6 +15,8 @@ from operon import (
     SkillDescriptor,
     SkillRegistry,
     SkillResult,
+    SkillPreparation,
+    SessionArtifact,
 )
 from operon.models import (
     GenerationRequest,
@@ -97,6 +99,28 @@ class OperonTests(unittest.TestCase):
         self.assertEqual(response.answer, "Friday is open [S1].")
         self.assertEqual(response.sources[0].path, "skill://calendar.availability")
         self.assertIn(Stage.SKILL, [event.stage for event in response.trace.events])
+
+    def test_prepares_partial_skill_call_from_typed_session_artifact(self) -> None:
+        provider = ScriptedProvider([
+            {"intent": "open hourly", "subquestions": [], "needs_grounding": False,
+             "answer_requirements": [], "skill_calls": [{"skill_id": "view.hourly", "arguments": {"window_ref": "last_result"}}]},
+            {"answer": "Opened [S1].", "confidence": 0.9, "used_source_ids": ["S1"]},
+        ])
+        descriptor = SkillDescriptor(
+            id="view.hourly", description="Open a weather hourly view.",
+            input_schema={"type": "object", "properties": {"place": {"type": "string"}, "date": {"type": "string"}}, "required": ["place", "date"], "additionalProperties": False},
+            output_schema={"type": "object", "properties": {"opened": {"type": "boolean"}}, "required": ["opened"], "additionalProperties": False},
+        )
+        skills = SkillRegistry([Skill(
+            descriptor, lambda _: SkillResult({"opened": True}),
+            prepare=lambda partial, artifacts: SkillPreparation.ready({"place": artifacts[0].value["place"], "date": artifacts[0].value["date"]}),
+        )])
+        response = Operon(provider, policy=Policy(planning="always"), skills=skills).run(
+            "Show the hourly view for that.",
+            session_artifacts=(SessionArtifact("window-1", "forecast-window", "Nokomis tomorrow evening", {"place": "Nokomis", "date": "2026-07-23"}),),
+        )
+        self.assertEqual(response.sources[0].path, "skill://view.hourly")
+        self.assertIn("Nokomis tomorrow evening", provider.requests[0].messages[1]["content"])
 
     def test_normalizes_percentage_style_confidence_without_retry(self) -> None:
         provider = ScriptedProvider(

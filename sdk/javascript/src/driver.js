@@ -6,12 +6,13 @@
  * functions. It is safe to run inside a Web Worker and has no Node dependency.
  */
 
-export const EXECUTION_PROTOCOL_VERSION = "0.1";
+export const EXECUTION_PROTOCOL_VERSION = "0.2";
 
 export const HostFailure = Object.freeze({
   provider: "provider",
   grounding: "grounding",
   memory: "memory",
+  session: "session",
   skill: "skill",
   cancelled: "cancelled",
   timeout: "timeout"
@@ -37,6 +38,7 @@ function parseStep(json) {
 function failureFor(command) {
   if (command.kind === "retrieve") return HostFailure.grounding;
   if (command.kind === "search_memory") return HostFailure.memory;
+  if (command.kind === "load_session") return HostFailure.session;
   if (command.kind === "invoke_skill") return HostFailure.skill;
   return HostFailure.provider;
 }
@@ -46,6 +48,8 @@ function eventFor(command, value) {
   if (!protocolVersion) throw protocolError("command is missing protocol_version");
   const requestId = command.request_id;
   switch (command.kind) {
+    case "load_session":
+      return { kind: "session_loaded", protocol_version: protocolVersion, request_id: requestId, artifacts: value };
     case "generate":
       return { kind: "generation_completed", protocol_version: protocolVersion, request_id: requestId, response: value };
     case "retrieve":
@@ -56,6 +60,8 @@ function eventFor(command, value) {
       return { kind: "output_validated", protocol_version: protocolVersion, request_id: requestId, errors: value };
     case "invoke_skill":
       return { kind: "skill_completed", protocol_version: protocolVersion, request_id: requestId, result: value };
+    case "prepare_skill":
+      return { kind: "skill_prepared", protocol_version: protocolVersion, request_id: requestId, outcome: value };
     default:
       throw protocolError(`unsupported command kind ${command.kind}`);
   }
@@ -79,6 +85,10 @@ export async function runSession(session, host) {
     try {
       let payload;
       switch (command.kind) {
+        case "load_session":
+          if (typeof host.loadSession !== "function") throw new Error("host does not implement loadSession");
+          payload = await host.loadSession(command);
+          break;
         case "generate": payload = await host.generate(command); break;
         case "retrieve": payload = await host.retrieve(command); break;
         case "search_memory":
@@ -92,6 +102,10 @@ export async function runSession(session, host) {
         case "invoke_skill":
           if (typeof host.invokeSkill !== "function") throw new Error("host does not implement invokeSkill");
           payload = await host.invokeSkill(command);
+          break;
+        case "prepare_skill":
+          if (typeof host.prepareSkill !== "function") throw new Error("host does not implement prepareSkill");
+          payload = await host.prepareSkill(command);
           break;
         default: throw protocolError(`unsupported command kind ${command.kind}`);
       }

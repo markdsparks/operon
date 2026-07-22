@@ -73,7 +73,7 @@ The C ABI itself has no database, inference, filesystem, or network authority.
 
 ## Status
 
-This is an experimental `0.1` ABI. Its handle lifecycle and JSON envelope are
+This is an experimental `0.2` ABI. Its handle lifecycle and JSON envelope are
 covered by Rust and Swift command-loop tests. The Swift bridge links a local
 macOS dynamic library for development and a locally generated iOS XCFramework.
 Release packaging and a cross-language replay suite remain before a stable ABI

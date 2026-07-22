@@ -26,6 +26,8 @@ class Policy:
     max_context_chars: int = 12_000
     max_sources: int = 5
     request_timeout_seconds: float = 60.0
+    max_replans: int = 2
+    require_skill_or_clarification: bool = False
 
     def __post_init__(self) -> None:
         if self.planning not in {"always", "adaptive", "never"}:
@@ -36,6 +38,8 @@ class Policy:
             raise ValueError("max_repair_attempts cannot be negative")
         if self.max_context_chars < 1:
             raise ValueError("max_context_chars must be positive")
+        if self.max_replans < 0:
+            raise ValueError("max_replans cannot be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +96,24 @@ class SkillCall:
 class SkillResult:
     output: Any
     sources: tuple[Source, ...] = ()
+    artifacts: tuple[SessionArtifact, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SessionArtifact:
+    id: str
+    kind: str
+    summary: str
+    value: Any
+    turn_id: str | None = None
+    expires_at: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Clarification:
+    prompt: str
+    missing_fields: tuple[str, ...] = ()
+    skill_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +123,7 @@ class Plan:
     needs_grounding: bool
     answer_requirements: tuple[str, ...] = ()
     skill_calls: tuple[SkillCall, ...] = ()
+    clarification: Clarification | None = None
 
 
 @dataclass(slots=True)
@@ -137,3 +160,4 @@ class OperonResponse:
     trace: ExecutionTrace
     declared_source_ids: tuple[str, ...] = ()
     was_repaired: bool = False
+    clarification: Clarification | None = None

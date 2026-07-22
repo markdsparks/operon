@@ -111,6 +111,13 @@ the host retains user-confirmation and side-effect authority, and the validated
 result returns as citable local context. This works for any domain—calendar,
 device sensor, inventory, weather, health workflow, or internal business rule.
 
+For follow-up actions, Operon can load typed, short-lived session artifacts
+before planning and ask the host to prepare partial calls such as
+`{"window_ref":"last_result"}`. This resolves references through application
+state—not assistant prose—and produces a structured clarification when a needed
+input is missing. Skill results can publish the next turn’s artifacts, and the
+protocol permits a bounded replan for dependent actions.
+
 ## What v0 does
 
 - Uses a fast path for simple requests and planning for complex ones.

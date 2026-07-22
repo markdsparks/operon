@@ -4,7 +4,7 @@
   "events": [
     {
       "kind": "generation_completed",
-      "protocol_version": "0.1",
+      "protocol_version": "0.2",
       "request_id": 1,
       "response": {
         "text": "{\"intent\":\"Determine refund eligibility\",\"subquestions\":[\"Is there a receipt?\"],\"needs_grounding\":false,\"answer_requirements\":[\"Apply policy\"]}",
@@ -15,7 +15,7 @@
     },
     {
       "kind": "retrieval_completed",
-      "protocol_version": "0.1",
+      "protocol_version": "0.2",
       "request_id": 2,
       "sources": [
         {
@@ -28,7 +28,7 @@
     },
     {
       "kind": "generation_completed",
-      "protocol_version": "0.1",
+      "protocol_version": "0.2",
       "request_id": 3,
       "response": {
         "text": "{\"answer\":\"It qualifies [S9].\",\"confidence\":0.8,\"used_source_ids\":[\"S9\"]}",
@@ -39,7 +39,7 @@
     },
     {
       "kind": "generation_completed",
-      "protocol_version": "0.1",
+      "protocol_version": "0.2",
       "request_id": 4,
       "response": {
         "text": "{\"answer\":\"It qualifies within 30 days with a receipt [S1].\",\"confidence\":0.9,\"used_source_ids\":[\"S1\"]}",

@@ -12,6 +12,8 @@ from .models import (
     OperonResponse,
     Plan,
     Policy,
+    Clarification,
+    SessionArtifact,
     SkillCall,
     Source,
     Stage,
@@ -87,6 +89,7 @@ class Operon:
         sessions: SessionStore | None = None,
         memory: MemoryStore | None = None,
         skills: SkillRegistry | None = None,
+        artifact_loader: callable | None = None,
     ) -> None:
         self.provider = provider
         if grounding is None or isinstance(grounding, LocalDocuments):
@@ -98,6 +101,7 @@ class Operon:
         self.sessions = sessions
         self.memory = memory
         self.skills = skills or SkillRegistry()
+        self.artifact_loader = artifact_loader
         if self.output_schema is not None:
             schema_errors = validate_schema_definition(self.output_schema)
             if schema_errors:
@@ -121,6 +125,7 @@ class Operon:
         *,
         session_id: str | None = None,
         memory_scope: MemoryScope | None = None,
+        session_artifacts: Iterable[SessionArtifact] = (),
     ) -> OperonResponse:
         query = query.strip()
         if not query:
@@ -128,9 +133,19 @@ class Operon:
 
         trace = ExecutionTrace()
         session = self._session_context(session_id, trace)
+        artifacts = tuple(session_artifacts)
+        if self.artifact_loader is not None and session_id is not None:
+            artifacts = tuple(self.artifact_loader(session_id))
+        if artifacts:
+            trace.add(Stage.GROUND, "loaded typed session artifacts", artifacts=len(artifacts), kinds=[artifact.kind for artifact in artifacts])
         memory = self._memory_context(query, memory_scope, trace)
-        plan = self._plan(query, trace, session, memory)
-        skill_sources = self._run_skills(plan, trace)
+        plan = self._plan(query, trace, session, memory, artifacts)
+        skill_sources, clarification = self._run_skills(plan, trace, artifacts)
+        if clarification is not None:
+            return OperonResponse(
+                answer=clarification.prompt, output=None, sources=(), confidence=1.0,
+                plan=plan, trace=trace, clarification=clarification,
+            )
         sources = self._normalize_sources((*skill_sources, *self._ground(query, plan, trace)))
         payload, was_repaired, attempts = self._answer(
             query, plan, sources, trace, session, memory
@@ -221,6 +236,7 @@ class Operon:
         trace: ExecutionTrace,
         session: SessionContext | None,
         memory: MemoryContext | None,
+        artifacts: tuple[SessionArtifact, ...],
     ) -> Plan:
         should_plan = self.policy.planning == "always" or (
             self.policy.planning == "adaptive" and self._is_complex(query)
@@ -249,6 +265,8 @@ class Operon:
                     {
                         "role": "user",
                         "content": self._query_with_context(query, session, memory)
+                        + "\n\nTYPED SESSION ARTIFACTS (references only):\n"
+                        + json.dumps([{"id": item.id, "kind": item.kind, "summary": item.summary} for item in artifacts], sort_keys=True)
                         + "\n\nAUTHORIZED SKILLS:\n"
                         + json.dumps(
                             [
@@ -281,7 +299,7 @@ class Operon:
             # veto the developer's request to use attached evidence.
             needs_grounding=self.grounding is not None,
             answer_requirements=tuple(_string_list(data.get("answer_requirements"))),
-            skill_calls=self.skills.authorized_calls(
+            skill_calls=self.skills.known_calls(
                 SkillCall(skill_id=item["skill_id"], arguments=item["arguments"])
                 for item in data.get("skill_calls", [])
                 if isinstance(item, dict)
@@ -303,10 +321,19 @@ class Operon:
         )
         return plan
 
-    def _run_skills(self, plan: Plan, trace: ExecutionTrace) -> tuple[Source, ...]:
+    def _run_skills(
+        self, plan: Plan, trace: ExecutionTrace, artifacts: tuple[SessionArtifact, ...]
+    ) -> tuple[tuple[Source, ...], Clarification | None]:
         sources: list[Source] = []
+        current_artifacts = list(artifacts)
         for index, call in enumerate(plan.skill_calls, start=1):
-            result = self.skills.invoke(call)
+            prepared = self.skills.prepare(call, tuple(current_artifacts))
+            if prepared.kind == "needs_input":
+                return (), prepared.clarification
+            if prepared.kind in {"rejected", "unavailable"}:
+                return (), Clarification(prepared.reason or "That action is unavailable.", skill_id=call.skill_id)
+            assert prepared.arguments is not None
+            result = self.skills.invoke(SkillCall(call.skill_id, prepared.arguments))
             sources.append(
                 Source(
                     id=f"skill-{index}",
@@ -316,13 +343,14 @@ class Operon:
                 )
             )
             sources.extend(result.sources)
+            current_artifacts.extend(result.artifacts)
             trace.add(
                 Stage.SKILL,
                 "completed application-owned skill",
                 skill_id=call.skill_id,
                 sources=len(sources),
             )
-        return tuple(sources)
+        return tuple(sources), None
 
     @staticmethod
     def _normalize_sources(sources: tuple[Source, ...]) -> tuple[Source, ...]:

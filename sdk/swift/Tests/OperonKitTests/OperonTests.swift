@@ -133,7 +133,7 @@ func applicationValidatorTriggersTargetedRepair() async throws {
 #if os(macOS)
   @Test
   func rustCoreFFIDrivesACommandEventSession() throws {
-    #expect(OperonCoreSession.abiVersion == "0.1")
+    #expect(OperonCoreSession.abiVersion == "0.2")
 
     let session = try OperonCoreSession(
       query: "What is two plus two?",
@@ -148,7 +148,7 @@ func applicationValidatorTriggersTargetedRepair() async throws {
     #expect(commandJSON.contains("\"generate\""))
 
     let event =
-      #"{"kind":"generation_completed","protocol_version":"0.1","request_id":1,"response":{"text":"{\"answer\":\"Four.\",\"confidence\":0.95,\"used_source_ids\":[]}","prompt_tokens":null,"completion_tokens":null,"finish_reason":null}}"#
+      #"{"kind":"generation_completed","protocol_version":"0.2","request_id":1,"response":{"text":"{\"answer\":\"Four.\",\"confidence\":0.95,\"used_source_ids\":[]}","prompt_tokens":null,"completion_tokens":null,"finish_reason":null}}"#
     let completed = try session.resume(eventJSON: event)
     guard case .complete(let resultJSON) = completed else {
       Issue.record("The completed generation must terminate the core session.")

@@ -1,6 +1,6 @@
 # Operon execution protocol
 
-Status: experimental 0.1
+Status: experimental 0.2
 
 The execution protocol separates Operon's deterministic cognitive state machine
 from platform-owned asynchronous work. The core never opens a socket, reads a
@@ -28,7 +28,20 @@ Only one command may be outstanding for a session. Every command carries a
 monotonically increasing request ID. An event with a stale or unexpected ID is
 rejected.
 
+When configured with a session ID, the first command is `LoadSession`. It
+returns bounded typed artifacts before planning, so a model resolves “there” or
+“that evening” from application state rather than reconstructing it from prose.
+Artifacts carry a host-private value plus a model-safe summary; only the ID,
+kind, and summary enter model prompts.
+
 ## Commands
+
+### Load session
+
+Requests bounded ephemeral artifacts for a host-owned session. These are not
+durable memory: they represent recent task focus, view state, drafts, and prior
+results and may expire after a turn. The host controls their contents and
+retention.
 
 ### Generate
 
@@ -79,11 +92,23 @@ arguments do not validate. The host remains responsible for permission prompts,
 side effects, and the actual implementation. A validated skill result becomes
 attributable local source context for the answer stage.
 
+### Prepare skill
+
+Requests host-side resolution of a partial skill call before invocation. The
+model may use semantic references such as `last_result`; the host maps those to
+canonical IDs, dates, locations, or UI targets using typed session artifacts.
+Only a `ready` result with arguments satisfying the descriptor schema may yield
+`InvokeSkill`.
+
 ## Events
 
 ### Generation completed
 
 Returns model text and optional usage metadata for a matching Generate command.
+
+### Session loaded
+
+Returns bounded `SessionArtifact` values for a matching Load session command.
 
 ### Retrieval completed
 
@@ -104,9 +129,15 @@ Returns the typed output and optional provenance sources for a matching Invoke
 skill command. The core checks the output against the registered descriptor
 before it can enter model context.
 
+### Skill prepared
+
+Returns one of `ready`, `needs_input`, `rejected`, or `unavailable` for a
+matching Prepare skill command. `needs_input` completes the turn with a typed
+clarification instead of a generic fallback answer.
+
 ### Command failed
 
-Returns a categorized host error for the outstanding command. Protocol 0.1
+Returns a categorized host error for the outstanding command. Protocol 0.2
 treats this as terminal. Later versions may add policy-controlled fallback and
 retry commands.
 
@@ -121,6 +152,10 @@ A completed result contains:
 - task plan;
 - repair status; and
 - portable trace events.
+
+It may instead contain a structured clarification with its missing fields and
+the relevant skill ID. The `require_skill_or_clarification` policy ensures an
+action-oriented session cannot return an unsupported generic answer.
 
 ## Compatibility
 
