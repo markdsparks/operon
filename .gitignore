@@ -12,4 +12,5 @@ artifacts/
 benchmarks/results/*.jsonl
 benchmarks/results/*.json
 benchmarks/results/matrix-*/
+sdk/javascript/pkg/
 .DS_Store

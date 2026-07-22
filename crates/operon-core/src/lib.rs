@@ -10,6 +10,8 @@ mod ffi;
 mod models;
 mod protocol;
 mod runtime;
+#[cfg(target_arch = "wasm32")]
+mod wasm;
 
 pub use context::{CompiledContext, ContextBudget, compile_context};
 pub use error::{OperonError, OperonResult};

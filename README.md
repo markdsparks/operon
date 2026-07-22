@@ -12,8 +12,9 @@ Operon is not an inference engine. It sits above inference engines and makes
 constrained models more useful through orchestration and explicit structure.
 
 > Status: executable v0 with a portable Rust core, a dependency-free Python
-> SDK/CLI, and a developer-preview Swift package for Apple platforms. Public
-> contracts remain intentionally small and experimental.
+> SDK/CLI, a developer-preview Swift package for Apple platforms, and an
+> experimental browser/Web Worker WASM driver. Public contracts remain
+> intentionally small and experimental.
 
 ## Quick start
 
@@ -137,6 +138,7 @@ The workspace contains:
 - `sdk/python`: executable Python SDK, local retrieval, HTTP provider, and CLI
 - `sdk/swift`: working iOS/macOS package, Apple Foundation Models provider, and
   grounded typed-decision demo
+- `sdk/javascript`: browser/Web Worker host driver for the Rust WASM session
 - `spec`: versioned command, event, output, and trace contracts
 - `conformance`: deterministic cross-SDK replay fixtures
 - `benchmarks`: model capability evaluation, separate from conformance

@@ -5,6 +5,7 @@ protocol and conformance suite.
 
 - `python`: working reference SDK and CLI
 - `swift`: developer-preview native SDK with an Apple Foundation Models provider
+- `javascript`: browser/Web Worker driver for the Rust WASM command/event session
 - `kotlin`: planned after the Apple vertical slice
 
 Platform SDKs own concurrency, cancellation, model APIs, storage, and platform

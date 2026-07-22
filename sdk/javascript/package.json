@@ -1,0 +1,13 @@
+{
+  "name": "@operon-ai/browser",
+  "version": "0.1.0",
+  "description": "Browser host driver for the Operon WASM execution protocol",
+  "type": "module",
+  "exports": "./src/driver.js",
+  "files": ["src", "pkg"],
+  "scripts": {
+    "build:wasm": "cargo build --manifest-path ../../crates/operon-core/Cargo.toml --release --target wasm32-unknown-unknown && wasm-bindgen --target web --out-dir pkg --out-name operon_core ../../target/wasm32-unknown-unknown/release/operon_core.wasm",
+    "test": "node --test test/*.test.mjs",
+    "test:wasm": "node test/wasm-smoke.mjs"
+  }
+}

@@ -1,16 +1,22 @@
-.PHONY: check check-apple test test-python test-rust test-swift build-c-abi build-apple-xcframework verify-apple-xcframework build-swift-ios lint-rust lint-swift
+.PHONY: check check-apple test test-python test-rust test-javascript test-wasm test-swift build-c-abi build-apple-xcframework verify-apple-xcframework build-swift-ios lint-rust lint-swift
 
 check: test lint-rust
 
 check-apple: check build-c-abi build-apple-xcframework verify-apple-xcframework test-swift build-swift-ios lint-swift
 
-test: test-python test-rust
+test: test-python test-rust test-javascript
 
 test-python:
 	PYTHONPATH=sdk/python/src python3 -m unittest discover -s sdk/python/tests -v
 
 test-rust:
 	cargo test --workspace
+
+test-javascript:
+	cd sdk/javascript && npm test
+
+test-wasm:
+	cd sdk/javascript && npm run build:wasm && npm run test:wasm
 
 build-c-abi:
 	cargo build --release -p operon-core
