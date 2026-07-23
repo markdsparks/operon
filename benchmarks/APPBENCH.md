@@ -10,7 +10,7 @@ quality matters, but app developers also need to know whether a model can carry
 context across turns, resolve references, prepare exact capability arguments,
 ask for missing input, follow a dependent action chain, and stop safely.
 
-## The v0.1 workload
+## The workload
 
 The versioned corpus contains 20 synthetic, domain-diverse app scenarios, with
 four cases in each category:
@@ -30,15 +30,22 @@ cannot silently move to a different corpus.
 
 ## The comparison
 
-AppBench v0.1 compares two configurations using the same model:
+The v0.2 runner compares three configurations using the same model:
 
 - `direct_raw`: a strong raw tool loop. The model receives the recent
   transcript, full app-state values, completed skill results, skill
   descriptions, and schemas. It must resolve canonical arguments itself.
-- `operon`: the model sees bounded artifact references. Operon routes the
-  request, lets host code prepare and validate canonical arguments, suppresses
-  repeated skills, requires a skill or clarification, and replans within a
-  fixed limit.
+- `operon_linear`: the v0.1 harness. The model sees bounded artifact references;
+  Operon prepares arguments, validates calls, suppresses repeats, and performs
+  bounded global replanning.
+- `operon`: the v0.2 TaskGraph harness. In addition to the linear controls,
+  skills declare typed artifact dependencies, the app declares a completion
+  contract, and structured decoding is limited to the current ready set.
+
+In both Operon configurations, the model sees bounded artifact references.
+Operon routes the request, lets host code prepare and validate canonical
+arguments, suppresses repeated skills, requires a skill or clarification, and
+replans within a fixed limit.
 
 This is intentionally conservative toward Operon: the raw baseline sees the
 full artifact values, while the Operon planner sees only model-safe summaries
@@ -81,6 +88,15 @@ PYTHONPATH=sdk/python/src:. python3 -m benchmarks.appbench \
   --repetitions 1
 ```
 
+The focused v0.2 release check can be reproduced with:
+
+```bash
+PYTHONPATH=sdk/python/src:. python3 -m benchmarks.appbench \
+  --model qwen3:4b \
+  --category dependent_chain \
+  --repetitions 3
+```
+
 Saved interactions can be deterministically rescored after evaluator fixes:
 
 ```bash
@@ -93,7 +109,7 @@ so the same workload can be run against larger local models or a cloud
 reference. Remote execution requires `--allow-remote`; credentials stay in the
 environment.
 
-## What v0.1 does not prove
+## What v0.2 does not prove
 
 This is a development benchmark, not a general intelligence ranking. The
 scenarios are synthetic, the first documented run covers one quantized 4B

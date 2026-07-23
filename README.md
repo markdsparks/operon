@@ -7,22 +7,24 @@ inspectable traces. Then add local knowledge, app-owned skills, session context,
 and memory as your product grows.
 
 ```text
-query → classify → retrieve → generate → validate → repair → response
+query → plan → ready actions → prepare → act → verify completion → response
 ```
 
 Operon is not an inference engine. It sits above inference engines and makes
 constrained models more useful through orchestration and explicit structure.
 
-> Status: executable v0 with a portable Rust core, a dependency-free Python
+> Status: v0.2 alpha with a portable Rust core, a dependency-free Python
 > SDK/CLI, a developer-preview Swift package for Apple platforms, and an
 > experimental browser/Web Worker WASM driver. Public contracts remain
 > intentionally small and experimental.
 
-**Early AppBench evidence:** on 20 synthetic app tasks repeated three times,
-the same local Qwen3 4B model completed 90% with Operon versus 20% in a raw
-full-state tool loop. Reference resolution, argument preparation, and
-clarification reached 100%; 6 of 12 multi-step runs finished end-to-end,
-versus 0 of 12 without Operon. Read the
+See the [v0.2 release notes](RELEASE_NOTES.md) and [changelog](CHANGELOG.md).
+
+**AppBench evidence:** on 20 synthetic app tasks repeated three times, the same
+local Qwen3 4B model completed 90% with the original Operon harness versus 20%
+in a raw full-state tool loop. v0.2 then targeted the measured multi-step gap:
+all 12 dependent jobs completed with exact routing and arguments, versus 6 of
+12 with linear Operon replanning and 0 of 12 in the raw loop. Read the
 [methodology](benchmarks/APPBENCH.md) and
 [development results](benchmarks/APPBENCH_RESULTS.md). This is engineering
 evidence, not a general model ranking.
@@ -128,7 +130,34 @@ state—not assistant prose—and produces a structured clarification when a nee
 input is missing. Skill results can publish the next turn’s artifacts, and the
 protocol permits a bounded replan for dependent actions.
 
-## What v0 does
+Operon v0.2 adds a TaskGraph underneath that same simple wrapper. Skills may
+declare typed artifact kinds through `consumes` and `produces`; an app may add
+a `CompletionContract` for the skill IDs or artifact kinds that must exist
+before a turn can finish. Operon compiles the goal-relevant graph, constrains
+structured decoding to dependency-ready actions, and returns idempotent skill
+receipts. The model interprets language; the runtime owns ordering and
+completion truth.
+
+```python
+from operon import CompletionContract
+
+# Descriptors in app_skills declare produces=("calendar.slot",) and
+# consumes=("calendar.slot",) on the matching capabilities.
+result = runtime.run(
+    "Find 30 minutes Friday and schedule a review with Maya.",
+    completion=CompletionContract(
+        required_skill_ids=("calendar.create_event",),
+    ),
+)
+print(result.skill_receipts)
+```
+
+Long-running native and browser sessions can also snapshot at a command
+boundary and restore without replaying completed work. C and WASM entry points
+carry the same versioned state; hosts persist the outstanding command and use
+its stable idempotency key to deduplicate side effects.
+
+## What v0.2 does
 
 - Uses a fast path for simple requests and planning for complex ones.
 - Turns complex queries into intent, subquestions, and answer requirements.
@@ -137,6 +166,9 @@ protocol permits a bounded replan for dependent actions.
 - Requests schema-constrained intermediate and final output.
 - Enforces optional application-defined typed output schemas.
 - Invokes only application-registered skills with typed input/output contracts.
+- Compiles typed capability dependencies into a bounded, goal-directed ready set.
+- Refuses normal completion while an app-defined completion contract is unmet.
+- Emits replay-safe skill receipts and versioned execution snapshots.
 - Validates confidence, citations, and source identifiers.
 - Runs a bounded, targeted repair when validation fails.
 - Repairs missing markers deterministically when every declared source is valid.

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Keep the local model already in your app. Wrap it with Operon for an immediate reliability upgrade, then add context, skills, and memory as you grow." />
+    <meta name="description" content="Keep the local model already in your app. Wrap it with Operon for planning and validation, then add TaskGraph execution, context, skills, and memory as you grow." />
     <meta property="og:title" content="Operon — Keep your model. Upgrade it." />
     <meta property="og:description" content="A drop-in, progressive harness for making local AI reliable inside real apps." />
     <meta property="og:image" content="https://markdsparks.github.io/operon/og-v3.png" />
@@ -29,7 +29,7 @@
     <main id="top">
       <section class="hero wrap">
         <div class="hero-copy">
-          <p class="eyebrow"><i></i> Drop-in runtime for the model you already use</p>
+          <p class="eyebrow"><i></i> Operon v0.2 · Drop-in runtime for the model you already use</p>
           <h1>Keep your model.<br /><em>Upgrade it.</em></h1>
           <p class="lede"><strong>Put Operon around the local model already in your app.</strong> No retraining, model swap, or cloud migration. Start with planning and validation now—then add context, skills, and memory as your product grows.</p>
           <div class="actions">
@@ -49,7 +49,7 @@
             <div class="app-turn current-turn"><b>YOU · 3</b><p>“Book the second one tomorrow morning.”</p><em>“second one” and “tomorrow” depend on app state</em></div>
             <div class="scenario-outcomes">
               <div class="scenario-fail"><span>MODEL ALONE</span><strong>Guesses from chat prose</strong><small>Which result? What date? What timezone?</small></div>
-              <div class="scenario-success"><span>WITH OPERON</span><strong>Resolves state, prepares the skill</strong><small>result_2 · local date · confirmation required</small></div>
+              <div class="scenario-success"><span>WITH OPERON</span><strong>Resolves state, completes the graph</strong><small>result_2 → availability → confirmed booking receipt</small></div>
             </div>
           </article>
         </div>
@@ -60,7 +60,7 @@
         <div class="upgrade-path">
           <article class="upgrade-now"><span>01 · NOW</span><h3>Keep your model</h3><code>Operon.wrap(your_model)</code><p>Add a bounded runtime around the provider already working in your app.</p></article>
           <article><span>02 · UPGRADE</span><h3>Get reliable output</h3><p>Turn on planning, grounding, typed results, validation, repair, and traces.</p></article>
-          <article><span>03 · GROW</span><h3>Use the full harness</h3><p>Plug in app-owned skills, session context, durable memory, and dependent actions.</p></article>
+          <article><span>03 · GROW</span><h3>Use the full harness</h3><p>Add app-owned skills, context, memory, and TaskGraph execution for dependent actions.</p></article>
         </div>
       </section>
 
@@ -87,12 +87,12 @@
           <div class="section-head"><p class="eyebrow">The runtime</p><h2>Wrap the model.<br /><em>Upgrade the system.</em></h2></div>
           <div class="runtime-grid">
             <article><span>01</span><h3>Load context</h3><p>Bring in bounded session artifacts and scoped memory before the model decides what to do.</p></article>
-            <article><span>02</span><h3>Plan</h3><p>Turn natural language into a typed intent, capability choice, and answer contract.</p></article>
-            <article><span>03</span><h3>Prepare &amp; act</h3><p>Resolve partial arguments through app code, clarify what is missing, then invoke an authorized skill.</p></article>
-            <article><span>04</span><h3>Ground</h3><p>Compile live skill results, local sources, and relevant memory into a bounded context.</p></article>
-            <article><span>05</span><h3>Verify</h3><p>Validate structure, citations, and business rules. Repair within limits—or fail clearly.</p></article>
+            <article><span>02</span><h3>Plan the goal</h3><p>Turn natural language into typed intent and an app-owned completion contract.</p></article>
+            <article><span>03</span><h3>Compute ready actions</h3><p>Use capability dependencies to expose only the valid next skills to the model.</p></article>
+            <article><span>04</span><h3>Prepare &amp; act</h3><p>Resolve canonical values in app code, invoke an authorized skill, and record a receipt.</p></article>
+            <article><span>05</span><h3>Verify &amp; continue</h3><p>Validate the result and either advance the graph, clarify, repair, or complete.</p></article>
           </div>
-          <div class="protocol-line" aria-hidden="true"><span>QUERY</span><i></i><span>STATE</span><i></i><span>PLAN</span><i></i><span>SKILLS</span><i></i><span>PROOF</span></div>
+          <div class="protocol-line" aria-hidden="true"><span>QUERY</span><i></i><span>STATE</span><i></i><span>GOAL</span><i></i><span>READY SET</span><i></i><span>RECEIPT</span></div>
         </div>
       </section>
 
@@ -101,9 +101,9 @@
         <div class="capability-grid">
           <article><span>CTX</span><h3>Typed session context</h3><p>Carry the active object, view, draft, or previous result across turns without asking the model to rediscover it from prose.</p></article>
           <article><span>MEM</span><h3>Scoped durable memory</h3><p>Retrieve app-approved facts and preferences by namespace, subject, sensitivity, validity, and status. Models never gain write authority.</p></article>
-          <article><span>SKL</span><h3>Host-controlled skills</h3><p>Expose typed capabilities with explicit schemas, confirmation requirements, and app-owned implementations.</p></article>
-          <article><span>PRE</span><h3>Argument preparation</h3><p>Let host code resolve “there,” “same one,” or “last result” into canonical values—or return a structured clarification.</p></article>
-          <article><span>RPL</span><h3>Bounded replanning</h3><p>Use one result to choose the next capability while enforcing a hard limit on dependent execution.</p></article>
+          <article><span>SKL</span><h3>Host-controlled skills</h3><p>Expose typed capabilities with schemas, artifact dependencies, confirmation requirements, and app-owned code.</p></article>
+          <article><span>GRF</span><h3>TaskGraph execution</h3><p>Compile consumes/produces edges into a ready set and refuse success until the completion contract is satisfied.</p></article>
+          <article><span>RCP</span><h3>Receipts &amp; recovery</h3><p>Record idempotent skill receipts and restore a versioned snapshot without replaying completed work.</p></article>
           <article><span>VAL</span><h3>Validation &amp; repair</h3><p>Enforce typed output, provenance, citations, confidence, and application rules before a result reaches the user.</p></article>
         </div>
       </section>
@@ -121,12 +121,12 @@
 
       <section class="proof" id="proof">
         <div class="wrap proof-grid">
-          <div class="proof-copy"><p class="eyebrow">AppBench v0.1 · first development run</p><h2>Does the app<br /><em>actually get smarter?</em></h2><p>On 20 app tasks repeated three times, the same local Qwen3 4B model completed 90% with Operon versus 20% in a raw full-state tool loop. The benchmark scores the whole job—not just plausible text or one lucky tool call.</p><div class="proof-links"><a href="https://github.com/markdsparks/operon/blob/main/benchmarks/APPBENCH.md">Read the methodology <span>→</span></a><a href="https://github.com/markdsparks/operon/blob/main/benchmarks/APPBENCH_RESULTS.md">Inspect the results <span>→</span></a></div><small>Development evidence, not a general model ranking. Same model, same skill catalog, 60 runs per configuration.</small></div>
+          <div class="proof-copy"><p class="eyebrow">AppBench v0.2 · measured TaskGraph release</p><h2>Can it finish<br /><em>the whole job?</em></h2><p>The measured gap was multi-step work: find something, then act on the result. With the same local Qwen3 4B model, Operon v0.2 completed every one of 12 repeated dependent jobs—with the exact capability order and arguments.</p><div class="proof-links"><a href="https://github.com/markdsparks/operon/blob/main/benchmarks/APPBENCH.md">Read the methodology <span>→</span></a><a href="https://github.com/markdsparks/operon/blob/main/benchmarks/APPBENCH_RESULTS.md">Inspect the results <span>→</span></a></div><small>Focused development evidence, not a general model ranking. Same model and unchanged four-case workload across all three configurations.</small></div>
           <div class="metrics">
-            <article><strong>+70</strong><span>percentage points in end-to-end task completion</span></article>
-            <article><strong>100%</strong><span>reference resolution and argument-preparation completion</span></article>
-            <article><strong>100%</strong><span>correct clarification when required input was missing</span></article>
-            <article class="metric-gap"><strong>6/12</strong><span>multi-step jobs finished end-to-end, versus 0/12 without Operon</span></article>
+            <article><strong>12/12</strong><span>multi-step jobs finished with Operon v0.2 TaskGraph</span></article>
+            <article><strong>6/12</strong><span>finished with the previous linear Operon harness</span></article>
+            <article><strong>0/12</strong><span>finished in the raw full-state model loop</span></article>
+            <article class="metric-gap"><strong>100%</strong><span>exact capability routing and canonical arguments in v0.2</span></article>
           </div>
         </div>
       </section>
@@ -135,7 +135,7 @@
         <div class="start-copy"><p class="eyebrow">Drop in now. Grow later.</p><h2>Wrap your model.<br /><em>Keep building.</em></h2><p>Start by wrapping the provider already in your app. Add local knowledge, typed skills, session context, and memory only when your product needs them. Python, Rust, Swift/C, and browser/WASM paths keep the same host-owned architecture.</p><a class="button" href="https://github.com/markdsparks/operon">Upgrade your model with Operon <b>↗</b></a></div>
         <div class="terminal" aria-label="Python quick start code example">
           <div class="terminal-bar"><span></span><span></span><span></span><b>local terminal</b></div>
-          <pre><code><em>from</em> operon <em>import</em> Operon
+          <pre><code><em>from</em> operon <em>import</em> Operon, CompletionContract
 
 <span># Start with the model already in your app</span>
 runtime = Operon.wrap(<mark>your_existing_model</mark>)
@@ -148,7 +148,13 @@ runtime = Operon.wrap(
   skills=app_skills,
   memory=local_memory,
 )
-print(result.answer, result.trace.events)</code></pre>
+result = runtime.run(
+  <mark>"Find a slot, then book it"</mark>,
+  completion=CompletionContract(
+    required_skill_ids=(<mark>"calendar.book"</mark>,),
+  ),
+)
+print(result.answer, result.skill_receipts)</code></pre>
           <button class="copy" data-copy aria-label="Copy quick start">Copy</button>
         </div>
       </section>

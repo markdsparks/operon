@@ -7,7 +7,7 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-use crate::{ExecutionEvent, ExecutionSession, ExecutionStep, SessionConfig};
+use crate::{ExecutionEvent, ExecutionSession, ExecutionSnapshot, ExecutionStep, SessionConfig};
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -47,6 +47,24 @@ impl OperonWasmSession {
         let event = serde_json::from_str::<ExecutionEvent>(&event_json)
             .map_err(|error| JsValue::from_str(&format!("invalid event_json: {error}")))?;
         serialize_step(self.session.resume(event))
+    }
+
+    /// Serializes deterministic execution state for app suspension or crash
+    /// recovery. Treat the result as private application state.
+    pub fn snapshot(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.session.snapshot())
+            .map_err(|error| JsValue::from_str(&format!("could not serialize snapshot: {error}")))
+    }
+
+    /// Restores a previously snapshotted session without replaying completed
+    /// actions.
+    #[wasm_bindgen(js_name = fromSnapshot)]
+    pub fn from_snapshot(snapshot_json: String) -> Result<OperonWasmSession, JsValue> {
+        let snapshot = serde_json::from_str::<ExecutionSnapshot>(&snapshot_json)
+            .map_err(|error| JsValue::from_str(&format!("invalid snapshot_json: {error}")))?;
+        let session = ExecutionSession::restore(snapshot)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(Self { session })
     }
 }
 

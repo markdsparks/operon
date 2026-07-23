@@ -59,6 +59,20 @@ import Foundation
       handle = newHandle
     }
 
+    /// Restores a versioned core snapshot without replaying completed work.
+    public init(snapshotJSON: String) throws {
+      var error: UnsafeMutablePointer<CChar>?
+      let newHandle = snapshotJSON.withCString { snapshotPointer in
+        operonSessionRestore(snapshotPointer, &error)
+      }
+      guard let newHandle else {
+        throw OperonCoreError.core(
+          takeOwnedString(error) ?? "Operon core could not restore the snapshot."
+        )
+      }
+      handle = newHandle
+    }
+
     deinit {
       close()
     }
@@ -83,6 +97,24 @@ import Foundation
           operonSessionResume(handle, event, output, error)
         }
       }
+    }
+
+    /// Captures private execution state at the current command boundary.
+    public func snapshotJSON() throws -> String {
+      guard let handle else { throw OperonCoreError.closed }
+      var output: UnsafeMutablePointer<CChar>?
+      var error: UnsafeMutablePointer<CChar>?
+      let status = operonSessionSnapshot(handle, &output, &error)
+      let errorMessage = takeOwnedString(error)
+      guard status == 0 else {
+        throw OperonCoreError.core(
+          errorMessage ?? "Operon core snapshot failed (status \(status))."
+        )
+      }
+      guard let json = takeOwnedString(output) else {
+        throw OperonCoreError.invalidResponse("Operon core returned no snapshot JSON.")
+      }
+      return json
     }
 
     private func invoke(
@@ -156,6 +188,19 @@ import Foundation
     _ outStepJSON: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
     _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
   ) -> Int32
+
+  @_silgen_name("operon_session_snapshot")
+  private func operonSessionSnapshot(
+    _ handle: OpaquePointer,
+    _ outSnapshotJSON: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
+    _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+  ) -> Int32
+
+  @_silgen_name("operon_session_restore")
+  private func operonSessionRestore(
+    _ snapshotJSON: UnsafePointer<CChar>,
+    _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+  ) -> OpaquePointer?
 
   @_silgen_name("operon_session_destroy")
   private func operonSessionDestroy(_ handle: OpaquePointer)

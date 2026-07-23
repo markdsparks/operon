@@ -55,6 +55,26 @@ A rejected operation is
 reported to Rust as a typed `command_failed` event, never converted into an
 invented answer.
 
+## Checkpoint and restore
+
+Provide an optional `checkpoint` host method to persist the versioned snapshot
+and its outstanding command before dispatch. After an app restart, pass that
+object to `operon.restore(checkpoint, host)`. The same command is redelivered
+with the same request ID and skill `idempotency_key`, allowing the app to
+deduplicate side effects safely.
+
+```js
+const host = {
+  checkpoint: ({ snapshot, command }) =>
+    savePrivateState({ snapshot, command }),
+  generate,
+  prepareSkill,
+  invokeSkill
+};
+
+const result = await operon.restore(await loadPrivateState(), host);
+```
+
 ## Development
 
 ```bash

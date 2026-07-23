@@ -84,7 +84,25 @@ class SkillDescriptor:
     description: str
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
+    consumes: tuple[str, ...] = ()
+    produces: tuple[str, ...] = ()
     requires_user_confirmation: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class CompletionContract:
+    """Deterministic conditions that must hold before a turn can finish."""
+
+    required_skill_ids: tuple[str, ...] = ()
+    required_artifact_kinds: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SkillReceipt:
+    idempotency_key: str
+    skill_id: str
+    artifact_ids: tuple[str, ...] = ()
+    artifact_kinds: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,3 +180,4 @@ class OperonResponse:
     declared_source_ids: tuple[str, ...] = ()
     was_repaired: bool = False
     clarification: Clarification | None = None
+    skill_receipts: tuple[SkillReceipt, ...] = ()

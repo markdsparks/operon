@@ -28,14 +28,18 @@ InferenceProvider
 1. Validate the request and local-only policy.
 2. Load bounded typed session artifacts before planning, when configured.
 3. Take a simple-query fast path or ask the model for a typed plan.
-4. Prepare any partial skill call against host-owned artifacts, then invoke it.
-5. Replan a bounded number of times after a skill result when another action is needed.
-6. Retrieve local context using the query, intent, and subquestions.
-7. Fit skill results and ranked source chunks into the configured context budget.
-8. Generate a structured answer following the plan.
-9. Validate answer shape, confidence, provenance, and inline citations.
-10. Run a targeted repair up to the configured limit.
-11. Return the answer, a typed clarification, or an execution trace.
+4. Compile the goal-relevant capability graph from typed `consumes`/`produces`
+   edges and the app's completion contract.
+5. Constrain the model to the current ready set, prepare its partial call
+   against host-owned artifacts, then invoke it.
+6. Record an idempotent receipt and replan within a fixed bound until the
+   completion contract is satisfied.
+7. Retrieve local context using the query, intent, and subquestions.
+8. Fit skill results and ranked source chunks into the configured context budget.
+9. Generate a structured answer following the plan.
+10. Validate answer shape, confidence, provenance, and inline citations.
+11. Run a targeted repair up to the configured limit.
+12. Return the answer, a typed clarification, receipts, and an execution trace.
 
 ## Stable boundaries
 
@@ -43,7 +47,7 @@ InferenceProvider
 `ModelCapabilities`, and returns a `GenerationResponse`. It intentionally knows
 nothing about retrieval, planning, or verification.
 
-Each generation request carries a reasoning-effort hint. The v0 runtime disables
+Each generation request carries a reasoning-effort hint. The v0.2 runtime disables
 provider-native thinking for bounded structured stages because a thinking model
 can consume its output budget before emitting JSON. Future policies may allocate
 different reasoning budgets by task, hardware state, and validation history.
@@ -53,11 +57,19 @@ current implementation is lexical; vector and hybrid indexes can implement the
 same behavior later.
 
 Skills are portable capability descriptors with an ID, description, input
-schema, output schema, and an optional user-confirmation requirement. The core
+schema, output schema, typed artifact kinds they consume and produce, and an
+optional user-confirmation requirement. The core
 can request an `InvokeSkill` command only for a descriptor configured by the
 application. The host performs the call, and the core validates the returned
 value before it becomes attributable answer context. This keeps permissions,
 side effects, device APIs, and business logic in the app.
+
+The TaskGraph is an internal execution representation, not a developer-facing
+workflow canvas. A `CompletionContract` states which skill IDs or artifact
+kinds must exist before the turn can finish. Operon walks backward from that
+goal, exposes only dependency-ready skills, and constrains structured decoding
+to their IDs. The model interprets language and fills semantic arguments; the
+runtime owns dependency order and completion truth.
 
 Typed session artifacts are an independent, ephemeral state layer. They carry
 an identity, kind, semantic summary, host-private value, and optional expiry.
@@ -99,6 +111,11 @@ so Operon can wrap Apple Foundation Models, llama.cpp, MLX, ExecuTorch, system
 models, and HTTP adapters without linking them into the core. See the
 [C ABI guide](docs/ffi/c-abi.md).
 
+Execution sessions can be snapshotted at command boundaries and restored without
+replaying completed work. Skill commands carry stable idempotency keys and
+completed results return receipts. Hosts protect snapshot data, persist the
+outstanding command beside it, and deduplicate side effects on redelivery.
+
 Until that ABI lands, the Swift vertical slice duplicates the minimum
 orchestration transitions needed to validate the platform design. This is a
 deliberate migration seam, not a second canonical core: the public Swift API and
@@ -111,10 +128,13 @@ authoritative grounding so it can classify, synthesize, and explain them.
 
 See [spec/execution-protocol.md](spec/execution-protocol.md) and
 [ADR 0001](docs/adr/0001-command-event-core.md) and
-[ADR 0002](docs/adr/0002-deterministic-app-authority.md).
+[ADR 0002](docs/adr/0002-deterministic-app-authority.md) and
+[ADR 0003](docs/adr/0003-taskgraph-ready-set.md).
 
 The recommended session and durable-memory architecture is documented in
 [local context and memory research](docs/research/local-memory-architecture.md).
+The graph-runtime research and intentionally limited v0.2 adoption are recorded
+in [agent graph engineering](docs/research/agent-graph-engineering.md).
 
 The protocol emits a host-owned `SearchMemory` command whenever a session is
 configured with an authorized memory scope. The Python reference host implements

@@ -49,6 +49,21 @@ int32_t operon_session_resume(
     char **out_step_json,
     char **out_error);
 
+/*
+ * Serializes/restores versioned deterministic execution state. Snapshot JSON
+ * may contain host-private artifact values and must be protected like app data.
+ * If a command was outstanding, persist it with the snapshot and redeliver it
+ * after restore using the same request ID and idempotency key.
+ */
+int32_t operon_session_snapshot(
+    OperonSessionHandle *handle,
+    char **out_snapshot_json,
+    char **out_error);
+
+OperonSessionHandle *operon_session_restore(
+    const char *snapshot_json,
+    char **out_error);
+
 /* Safe to call with NULL. Do not reuse the handle afterwards. */
 void operon_session_destroy(OperonSessionHandle *handle);
 

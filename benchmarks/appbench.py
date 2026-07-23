@@ -18,6 +18,7 @@ from time import monotonic
 from typing import Any, Sequence
 
 from operon import (
+    CompletionContract,
     Operon,
     Policy,
     SessionArtifact,
@@ -33,9 +34,9 @@ from operon.providers import OpenAICompatibleProvider
 from operon.schema import validate_instance
 
 
-CONFIGURATIONS = ("direct_raw", "operon")
-PROTOCOL_VERSION = "appbench-0.1"
-EVALUATOR_VERSION = "0.2"
+CONFIGURATIONS = ("direct_raw", "operon_linear", "operon")
+PROTOCOL_VERSION = "appbench-0.2"
+EVALUATOR_VERSION = "0.3"
 
 _DIRECT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -320,12 +321,30 @@ def _operon_skills(
     attempted: list[dict[str, Any]],
     invoked: list[dict[str, Any]],
     blocked: list[bool],
+    *,
+    task_graph: bool,
 ) -> SkillRegistry:
     skills: list[Skill] = []
     output_schema = {"type": "object", "additionalProperties": True}
     for skill_id in case["available_skills"]:
         definition = suite["skills"][skill_id]
         behavior = _behavior(case, skill_id)
+        consumes = tuple(
+            sorted(
+                {
+                    mapping["artifact_kind"]
+                    for mapping in behavior.get("prepare", {}).get("mappings", [])
+                }
+            )
+        ) if task_graph else ()
+        produces = tuple(
+            sorted(
+                {
+                    item["kind"]
+                    for item in behavior.get("publishes", [])
+                }
+            )
+        ) if task_graph else ()
 
         def make_prepare(
             current_skill_id: str, current_behavior: dict[str, Any]
@@ -390,6 +409,8 @@ def _operon_skills(
                     description=definition["description"],
                     input_schema=definition["input_schema"],
                     output_schema=output_schema,
+                    consumes=consumes,
+                    produces=produces,
                 ),
                 make_handler(skill_id, behavior),
                 prepare=make_prepare(skill_id, behavior),
@@ -402,11 +423,15 @@ def run_operon(
     provider: CountingProvider,
     suite: dict[str, Any],
     case: dict[str, Any],
+    *,
+    task_graph: bool,
 ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], bool, str | None]:
     attempted: list[dict[str, Any]] = []
     invoked: list[dict[str, Any]] = []
     blocked = [False]
-    skills = _operon_skills(suite, case, attempted, invoked, blocked)
+    skills = _operon_skills(
+        suite, case, attempted, invoked, blocked, task_graph=task_graph
+    )
     runtime = Operon(
         provider,
         policy=Policy(
@@ -420,7 +445,23 @@ def run_operon(
         skills=skills,
     )
     try:
-        response = runtime.run(case["query"], session_artifacts=_artifacts(case))
+        expected_calls = case["expected"].get("calls", [])
+        expected_skill = case["expected"].get("expected_skill_id")
+        required_skill_ids = (
+            (expected_calls[-1]["skill_id"],)
+            if expected_calls
+            else ((expected_skill,) if expected_skill else ())
+        )
+        completion = (
+            CompletionContract(required_skill_ids=required_skill_ids)
+            if task_graph and required_skill_ids
+            else None
+        )
+        response = runtime.run(
+            case["query"],
+            session_artifacts=_artifacts(case),
+            completion=completion,
+        )
     except Exception as exc:  # A benchmark records failures rather than aborting its matrix.
         return "error", attempted, invoked, blocked[0], str(exc)
     if blocked[0]:
@@ -502,9 +543,13 @@ def run_case(
             outcome, attempted, invoked, blocked, error = run_direct(
                 counted, suite, case
             )
+        elif configuration == "operon_linear":
+            outcome, attempted, invoked, blocked, error = run_operon(
+                counted, suite, case, task_graph=False
+            )
         else:
             outcome, attempted, invoked, blocked, error = run_operon(
-                counted, suite, case
+                counted, suite, case, task_graph=True
             )
     except Exception as exc:  # Keep the rest of the matrix useful after one bad cell.
         outcome, attempted, invoked, blocked = "error", [], [], False

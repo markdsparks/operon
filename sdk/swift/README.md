@@ -32,6 +32,12 @@ local data access in the app while moving orchestration into Rust. Its typed
 `run` API accepts an `OperonSchema` and `validateOutput` closure: the closure's
 errors become Rust validation events and can trigger a bounded targeted repair.
 
+`OperonCoreSession.snapshotJSON()` captures versioned private state at a command
+boundary, and `OperonCoreSession(snapshotJSON:)` restores it without replaying
+completed work. Persist the outstanding command beside the snapshot and use the
+skill command's stable idempotency key to deduplicate any redelivered side
+effect.
+
 For durable local context, pass an application-owned `OperonMemoryStore` and
 `OperonMemoryScope` to `OperonCoreDriver`. The included
 `FileOperonMemoryStore` is a small atomic JSON-file implementation with typed

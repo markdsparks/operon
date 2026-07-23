@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "operon-runtime"
-version = "0.1.0"
+version = "0.2.0"
 description = "A local-first cognitive runtime for small language models"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,6 +17,11 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 dependencies = []
+
+[project.urls]
+Homepage = "https://markdsparks.github.io/operon/"
+Repository = "https://github.com/markdsparks/operon"
+Changelog = "https://github.com/markdsparks/operon/blob/main/CHANGELOG.md"
 
 [project.scripts]
 operon = "operon.cli:main"

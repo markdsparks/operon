@@ -43,6 +43,8 @@ make verify-apple-xcframework
   `operon_session_destroy`.
 - `operon_session_start` and `operon_session_resume` allocate returned JSON and
   error strings; free each with `operon_string_free`.
+- `operon_session_snapshot` returns versioned private state;
+  `operon_session_restore` recreates a handle without replaying completed work.
 - `operon_abi_version` returns a library-owned static string that must not be
   freed.
 - A null `config_json` selects default configuration. `out_step_json` is
@@ -70,6 +72,15 @@ store for grounding. Typed Swift callers can return application validation
 errors through `output_validated`; Rust uses them for bounded targeted repair.
 Memory-command routing is intentionally not enabled yet.
 The C ABI itself has no database, inference, filesystem, or network authority.
+
+## Suspension and recovery
+
+Call `operon_session_snapshot` at a command boundary and persist its JSON with
+the outstanding command. A restored session is still waiting for the matching
+event, so the host may redeliver that command after a crash or app suspension.
+`InvokeSkill` carries a stable `idempotency_key`; hosts should deduplicate side
+effects with it before returning `SkillCompleted`. Snapshots contain private
+artifact values and require the same storage protection as application state.
 
 ## Status
 

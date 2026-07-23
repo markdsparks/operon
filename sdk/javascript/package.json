@@ -1,7 +1,13 @@
 {
   "name": "@operon-ai/browser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Browser host driver for the Operon WASM execution protocol",
+  "license": "MIT",
+  "homepage": "https://markdsparks.github.io/operon/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markdsparks/operon.git"
+  },
   "type": "module",
   "exports": "./src/driver.js",
   "files": ["src", "pkg"],

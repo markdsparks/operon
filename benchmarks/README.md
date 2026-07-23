@@ -6,10 +6,15 @@ The document benchmark below measures grounded question answering. AppBench
 measures the more important product outcome: whether the same small local model
 can complete multi-turn app work with and without the Operon harness.
 
-The v0.1 suite covers typed reference resolution, canonical argument
+The versioned suite covers typed reference resolution, canonical argument
 preparation, dependent skill chains, clarification, and safe failure. Read the
-[methodology](APPBENCH.md) and the first documented
-[Qwen3 4B development results](APPBENCH_RESULTS.md).
+[methodology](APPBENCH.md) and the documented
+[Qwen3 4B v0.1 and v0.2 development results](APPBENCH_RESULTS.md).
+
+AppBench 0.2 reports `direct_raw`, `operon_linear`, and `operon`. The third
+configuration enables v0.2 capability dependencies, completion contracts, and
+ready-set constrained decoding so the release benefit can be isolated from the
+previous linear harness.
 
 ```bash
 PYTHONPATH=sdk/python/src:. python3 -m benchmarks.appbench \

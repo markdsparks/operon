@@ -6,6 +6,18 @@
     {
       "type": "object",
       "properties": {
+        "kind": { "const": "load_session" },
+        "protocol_version": { "const": "0.2" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "session_id": { "type": "string", "minLength": 1 },
+        "limit": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["kind", "protocol_version", "request_id", "session_id", "limit"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
         "kind": { "const": "generate" },
         "protocol_version": { "const": "0.2" },
         "request_id": { "type": "integer", "minimum": 1 },
@@ -58,6 +70,33 @@
     {
       "type": "object",
       "properties": {
+        "kind": { "const": "invoke_skill" },
+        "protocol_version": { "const": "0.2" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "idempotency_key": { "type": "string", "minLength": 1 },
+        "skill_id": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object" },
+        "requires_user_confirmation": { "type": "boolean" }
+      },
+      "required": ["kind", "protocol_version", "request_id", "skill_id", "arguments", "requires_user_confirmation"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "prepare_skill" },
+        "protocol_version": { "const": "0.2" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "skill_id": { "type": "string", "minLength": 1 },
+        "partial_arguments": { "type": "object" },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact_reference" } }
+      },
+      "required": ["kind", "protocol_version", "request_id", "skill_id", "partial_arguments", "artifacts"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
         "kind": { "const": "validate_output" },
         "protocol_version": { "const": "0.2" },
         "request_id": { "type": "integer", "minimum": 1 },
@@ -66,5 +105,17 @@
       "required": ["kind", "protocol_version", "request_id", "output"],
       "additionalProperties": false
     }
-  ]
+  ],
+  "$defs": {
+    "artifact_reference": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string" }
+      },
+      "required": ["id", "kind", "summary"],
+      "additionalProperties": false
+    }
+  }
 }

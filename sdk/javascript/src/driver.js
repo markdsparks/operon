@@ -73,14 +73,17 @@ function eventFor(command, value) {
  * Host methods receive the complete protocol command and must return the event
  * payload only: a GenerationResponse, Source[], MemoryRecord[], or string[].
  */
-export async function runSession(session, host) {
+async function driveSession(session, host, initialStep) {
   if (!session || typeof session.start !== "function" || typeof session.resume !== "function") {
     throw new TypeError("session must provide start() and resume(eventJson)");
   }
-  let step = parseStep(session.start());
+  let step = initialStep;
   while (step.kind === "command") {
     const command = step.command;
     if (!command?.kind) throw protocolError("command step is missing command.kind");
+    if (typeof host.checkpoint === "function" && typeof session.snapshot === "function") {
+      await host.checkpoint({ snapshot: session.snapshot(), command });
+    }
     let event;
     try {
       let payload;
@@ -124,6 +127,10 @@ export async function runSession(session, host) {
   return step.result;
 }
 
+export async function runSession(session, host) {
+  return driveSession(session, host, parseStep(session.start()));
+}
+
 /** Creates a session from a wasm-bindgen module generated from operon-core. */
 export function createBrowserDriver(wasm) {
   if (!wasm || typeof wasm.OperonWasmSession !== "function") {
@@ -135,6 +142,24 @@ export function createBrowserDriver(wasm) {
       const session = new wasm.OperonWasmSession(query, JSON.stringify(config ?? {}));
       try {
         return await runSession(session, host);
+      } finally {
+        session.free?.();
+      }
+    },
+    /** Restores a checkpoint and safely redelivers its outstanding command. */
+    async restore(checkpoint, host) {
+      if (!checkpoint?.snapshot || !checkpoint?.command) {
+        throw new TypeError("checkpoint must contain snapshot and command");
+      }
+      if (typeof wasm.OperonWasmSession.fromSnapshot !== "function") {
+        throw new TypeError("WASM bundle does not support snapshot restoration");
+      }
+      const session = wasm.OperonWasmSession.fromSnapshot(checkpoint.snapshot);
+      try {
+        return await driveSession(session, host, {
+          kind: "command",
+          command: checkpoint.command
+        });
       } finally {
         session.free?.();
       }

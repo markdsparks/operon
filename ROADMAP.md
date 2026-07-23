@@ -40,7 +40,8 @@ least three task classes while reporting its latency and generation overhead.
 - [ ] Add model, memory, latency, and energy accounting
 - [x] Add a versioned command/event protocol and replayable conformance format
 - [x] Make the synchronous runtime drive the resumable core
-- [ ] Stabilize safe trace serialization and session snapshots
+- [x] Add versioned session snapshots and restore entry points to Rust, C, and WASM
+- [ ] Stabilize snapshot encryption/storage guidance and cross-version migration
 - [x] Research local session and durable-memory architecture
 - [x] Add local SQLite session persistence and bounded historical context to the Python reference host
 - [x] Define an experimental host-owned durable-memory search command and typed record envelope
@@ -48,6 +49,8 @@ least three task classes while reporting its latency and generation overhead.
 - [x] Add scope, deletion, temporal-update, and untrusted-memory conformance fixtures
 - [x] Drive scoped durable-memory context through the shared core and Apple host
 - [ ] Add durable session-context injection through the shared core and Apple host
+- [x] Add typed capability dependencies, completion contracts, ready-set decoding, and skill receipts
+- [ ] Add policy-controlled command retries, fallback providers, and compensation hooks
 
 ## Milestone 3: Apple native
 

@@ -34,6 +34,12 @@ returns bounded typed artifacts before planning, so a model resolves “there”
 Artifacts carry a host-private value plus a model-safe summary; only the ID,
 kind, and summary enter model prompts.
 
+When skills declare `consumes` and `produces`, Operon compiles the portion of
+the capability graph that can satisfy an optional completion contract. Only
+capabilities whose typed dependencies are present enter the ready set. That set
+is enforced in both the prompt catalog and structured decoding schema, so a
+small model cannot repeat a completed lookup or jump past a prerequisite.
+
 ## Commands
 
 ### Load session
@@ -91,6 +97,10 @@ call only from that registry; the core drops unknown calls and calls whose
 arguments do not validate. The host remains responsible for permission prompts,
 side effects, and the actual implementation. A validated skill result becomes
 attributable local source context for the answer stage.
+
+Each invocation carries an `idempotency_key`. Hosts use it to deduplicate a
+side effect if an outstanding command is redelivered after suspension or crash
+recovery.
 
 ### Prepare skill
 
@@ -150,12 +160,26 @@ A completed result contains:
 - cited sources and declared source IDs;
 - normalized confidence;
 - task plan;
-- repair status; and
-- portable trace events.
+- repair status;
+- portable trace events; and
+- ordered skill receipts with idempotency keys and published artifact IDs.
 
 It may instead contain a structured clarification with its missing fields and
 the relevant skill ID. The `require_skill_or_clarification` policy ensures an
 action-oriented session cannot return an unsupported generic answer.
+
+If a `CompletionContract` is present, every required skill ID and artifact kind
+must be observed before normal completion. An unmet contract produces a typed
+clarification instead of plausible success text.
+
+## Snapshots
+
+`ExecutionSession::snapshot` captures versioned state at a command boundary;
+`ExecutionSession::restore` resumes without replaying completed work. Equivalent
+entry points are exposed through WASM and the C ABI. The host persists the
+outstanding command beside the snapshot and returns its matching event after
+restore. Snapshots include private artifact values and must be protected like
+application data.
 
 ## Compatibility
 

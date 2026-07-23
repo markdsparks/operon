@@ -6,6 +6,17 @@
     {
       "type": "object",
       "properties": {
+        "kind": { "const": "session_loaded" },
+        "protocol_version": { "const": "0.2" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "artifacts": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["kind", "protocol_version", "request_id", "artifacts"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
         "kind": { "const": "generation_completed" },
         "protocol_version": { "const": "0.2" },
         "request_id": { "type": "integer", "minimum": 1 },
@@ -50,11 +61,39 @@
     {
       "type": "object",
       "properties": {
+        "kind": { "const": "skill_completed" },
+        "protocol_version": { "const": "0.2" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "result": { "type": "object" }
+      },
+      "required": ["kind", "protocol_version", "request_id", "result"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "skill_prepared" },
+        "protocol_version": { "const": "0.2" },
+        "request_id": { "type": "integer", "minimum": 1 },
+        "outcome": {
+          "type": "object",
+          "properties": {
+            "kind": { "enum": ["ready", "needs_input", "rejected", "unavailable"] }
+          },
+          "required": ["kind"]
+        }
+      },
+      "required": ["kind", "protocol_version", "request_id", "outcome"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
         "kind": { "const": "command_failed" },
         "protocol_version": { "const": "0.2" },
         "request_id": { "type": "integer", "minimum": 1 },
         "failure": {
-          "enum": ["provider", "grounding", "memory", "cancelled", "timeout"]
+          "enum": ["provider", "grounding", "memory", "session", "skill", "cancelled", "timeout"]
         },
         "message": { "type": "string" }
       },

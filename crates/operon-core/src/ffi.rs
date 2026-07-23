@@ -10,7 +10,7 @@ use std::ptr;
 
 use serde::Serialize;
 
-use crate::{ExecutionEvent, ExecutionSession, ExecutionStep, SessionConfig};
+use crate::{ExecutionEvent, ExecutionSession, ExecutionSnapshot, ExecutionStep, SessionConfig};
 
 pub const OPERON_FFI_OK: i32 = 0;
 pub const OPERON_FFI_ERROR: i32 = 1;
@@ -112,6 +112,78 @@ pub unsafe extern "C" fn operon_session_resume(
             .map_err(|error| error.to_string())
     }));
     unsafe { finish_step(result, out_step_json, out_error) }
+}
+
+/// Serializes deterministic session state for suspension or crash recovery.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn operon_session_snapshot(
+    handle: *mut OperonSessionHandle,
+    out_snapshot_json: *mut *mut c_char,
+    out_error: *mut *mut c_char,
+) -> i32 {
+    unsafe { clear_out(out_snapshot_json) };
+    unsafe { clear_out(out_error) };
+    if out_snapshot_json.is_null() || handle.is_null() {
+        unsafe { write_error(out_error, "session handle and output cannot be null".into()) };
+        return OPERON_FFI_INVALID_ARGUMENT;
+    }
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let session = unsafe { &(*handle).session };
+        serde_json::to_string(&session.snapshot())
+            .map_err(|error| format!("failed to serialize snapshot: {error}"))
+    }));
+    match result {
+        Ok(Ok(json)) => {
+            unsafe { write_out(out_snapshot_json, json) };
+            OPERON_FFI_OK
+        }
+        Ok(Err(error)) => {
+            unsafe { write_error(out_error, error) };
+            OPERON_FFI_ERROR
+        }
+        Err(_) => {
+            unsafe {
+                write_error(
+                    out_error,
+                    "Operon panicked while snapshotting a session".into(),
+                )
+            };
+            OPERON_FFI_ERROR
+        }
+    }
+}
+
+/// Restores an opaque handle from `operon_session_snapshot` output.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn operon_session_restore(
+    snapshot_json: *const c_char,
+    out_error: *mut *mut c_char,
+) -> *mut OperonSessionHandle {
+    unsafe { clear_out(out_error) };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let json = unsafe { required_string(snapshot_json, "snapshot_json") }?;
+        let snapshot: ExecutionSnapshot = serde_json::from_str(&json)
+            .map_err(|error| format!("invalid snapshot_json: {error}"))?;
+        ExecutionSession::restore(snapshot)
+            .map(|session| Box::into_raw(Box::new(OperonSessionHandle { session })))
+            .map_err(|error| error.to_string())
+    }));
+    match result {
+        Ok(Ok(handle)) => handle,
+        Ok(Err(error)) => {
+            unsafe { write_error(out_error, error) };
+            ptr::null_mut()
+        }
+        Err(_) => {
+            unsafe {
+                write_error(
+                    out_error,
+                    "Operon panicked while restoring a session".into(),
+                )
+            };
+            ptr::null_mut()
+        }
+    }
 }
 
 /// Destroys a handle. It is safe to pass null. Do not reuse a destroyed handle.

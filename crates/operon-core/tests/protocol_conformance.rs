@@ -2,8 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use operon_core::{
-    ExecutionCommand, ExecutionEvent, ExecutionPolicy, ExecutionSession, ExecutionStep,
-    MemoryScope, MemorySensitivity, SessionConfig, SkillDescriptor, SkillResult, Stage, Strategy,
+    CompletionContract, ExecutionCommand, ExecutionEvent, ExecutionPolicy, ExecutionSession,
+    ExecutionSnapshot, ExecutionStep, MemoryScope, MemorySensitivity, SessionConfig,
+    SkillDescriptor, SkillResult, Stage, Strategy,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -34,6 +35,7 @@ fn replays_refund_grounding_repair_fixture() {
             has_application_validator: false,
             memory_scope: None,
             skills: vec![],
+            completion: None,
             session_id: None,
             max_session_artifacts: 12,
         },
@@ -121,6 +123,7 @@ fn application_validation_errors_trigger_a_targeted_repair() {
             has_application_validator: true,
             memory_scope: None,
             skills: vec![],
+            completion: None,
             session_id: None,
             max_session_artifacts: 12,
         },
@@ -212,6 +215,7 @@ fn memory_scope_yields_search_before_generation_and_enters_context() {
             has_application_validator: false,
             memory_scope: Some(scope.clone()),
             skills: vec![],
+            completion: None,
             session_id: None,
             max_session_artifacts: 12,
         },
@@ -318,6 +322,8 @@ fn invokes_only_registered_validated_skills_and_exposes_their_result_as_context(
         description: "Reads the application's weather snapshot.".into(),
         input_schema: json!({"type":"object","properties":{"place":{"type":"string"}},"required":["place"],"additionalProperties":false}),
         output_schema: json!({"type":"object","properties":{"forecast":{"type":"string"}},"required":["forecast"],"additionalProperties":false}),
+        consumes: vec![],
+        produces: vec![],
         requires_user_confirmation: false,
     };
     let mut session = ExecutionSession::new(
@@ -438,6 +444,8 @@ fn loads_typed_state_before_planning_and_returns_a_structured_clarification() {
         description: "Open an hourly view.".into(),
         input_schema: json!({"type":"object","properties":{"place":{"type":"string"},"date":{"type":"string"}},"required":["place","date"],"additionalProperties":false}),
         output_schema: json!({"type":"object","properties":{"opened":{"type":"boolean"}},"required":["opened"],"additionalProperties":false}),
+        consumes: vec![],
+        produces: vec![],
         requires_user_confirmation: false,
     };
     let mut session = ExecutionSession::new(
@@ -521,4 +529,201 @@ fn loads_typed_state_before_planning_and_returns_a_structured_clarification() {
         _ => panic!("expected clarification completion"),
     };
     assert_eq!(result.clarification.unwrap().missing_fields, vec!["date"]);
+}
+
+#[test]
+fn task_graph_completes_a_dependency_chain_and_restores_without_replaying_work() {
+    let find = SkillDescriptor {
+        id: "calendar.find_slots".into(),
+        description: "Find a free slot.".into(),
+        input_schema: json!({"type":"object","additionalProperties":true}),
+        output_schema: json!({"type":"object","additionalProperties":true}),
+        consumes: vec![],
+        produces: vec!["calendar.slot".into()],
+        requires_user_confirmation: false,
+    };
+    let create = SkillDescriptor {
+        id: "calendar.create_event".into(),
+        description: "Create an event from a selected slot.".into(),
+        input_schema: json!({"type":"object","additionalProperties":true}),
+        output_schema: json!({"type":"object","additionalProperties":true}),
+        consumes: vec!["calendar.slot".into()],
+        produces: vec![],
+        requires_user_confirmation: false,
+    };
+    let mut session = ExecutionSession::new(
+        "Find time Friday and book it.",
+        SessionConfig {
+            policy: ExecutionPolicy {
+                planning: Strategy::Always,
+                require_skill_or_clarification: true,
+                ..ExecutionPolicy::default()
+            },
+            skills: vec![find, create],
+            completion: Some(CompletionContract {
+                required_skill_ids: vec!["calendar.create_event".into()],
+                required_artifact_kinds: vec![],
+            }),
+            ..SessionConfig::default()
+        },
+    )
+    .unwrap();
+
+    let plan_id = match session.start().unwrap() {
+        ExecutionStep::Command(ExecutionCommand::Generate { request_id, .. }) => request_id,
+        _ => panic!("expected planning"),
+    };
+    let prepare_find_id = match session
+        .resume(ExecutionEvent::GenerationCompleted {
+            protocol_version: "0.2".into(),
+            request_id: plan_id,
+            response: operon_core::GenerationResponse::text(
+                r#"{"intent":"book time","subquestions":[],"needs_grounding":false,"answer_requirements":[],"skill_calls":[{"skill_id":"calendar.find_slots","arguments":{"day":"Friday"}}]}"#,
+            ),
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::PrepareSkill {
+            request_id,
+            skill_id,
+            ..
+        }) => {
+            assert_eq!(skill_id, "calendar.find_slots");
+            request_id
+        }
+        _ => panic!("expected ready prerequisite"),
+    };
+    let invoke_find_id = match session
+        .resume(ExecutionEvent::SkillPrepared {
+            protocol_version: "0.2".into(),
+            request_id: prepare_find_id,
+            outcome: operon_core::SkillPreparation::Ready {
+                arguments: json!({"day":"Friday"}),
+            },
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::InvokeSkill {
+            request_id,
+            idempotency_key,
+            ..
+        }) => {
+            assert!(idempotency_key.contains("calendar.find_slots"));
+            request_id
+        }
+        _ => panic!("expected prerequisite invocation"),
+    };
+
+    let snapshot_json = serde_json::to_string(&session.snapshot()).unwrap();
+    let snapshot: ExecutionSnapshot = serde_json::from_str(&snapshot_json).unwrap();
+    session = ExecutionSession::restore(snapshot).unwrap();
+
+    let replan_id = match session
+        .resume(ExecutionEvent::SkillCompleted {
+            protocol_version: "0.2".into(),
+            request_id: invoke_find_id,
+            result: SkillResult {
+                output: json!({"found":true}),
+                sources: vec![],
+                artifacts: vec![operon_core::SessionArtifact {
+                    id: "slot-1".into(),
+                    kind: "calendar.slot".into(),
+                    summary: "Friday at 10:00".into(),
+                    value: json!({"starts_at":"2026-07-24T10:00:00-05:00"}),
+                    turn_id: None,
+                    expires_at: None,
+                }],
+            },
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::Generate {
+            request_id,
+            stage: Stage::Replan,
+            request,
+            ..
+        }) => {
+            assert!(
+                request.messages[1]
+                    .content
+                    .contains("calendar.create_event")
+            );
+            assert!(
+                !request.messages[1]
+                    .content
+                    .contains("\"id\": \"calendar.find_slots\"")
+            );
+            request_id
+        }
+        _ => panic!("expected constrained replanning"),
+    };
+    let prepare_create_id = match session
+        .resume(ExecutionEvent::GenerationCompleted {
+            protocol_version: "0.2".into(),
+            request_id: replan_id,
+            response: operon_core::GenerationResponse::text(
+                r#"{"intent":"create event","subquestions":[],"needs_grounding":false,"answer_requirements":[],"skill_calls":[{"skill_id":"calendar.create_event","arguments":{"slot_ref":"slot-1"}}]}"#,
+            ),
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::PrepareSkill {
+            request_id,
+            skill_id,
+            artifacts,
+            ..
+        }) => {
+            assert_eq!(skill_id, "calendar.create_event");
+            assert_eq!(artifacts[0].id, "slot-1");
+            request_id
+        }
+        _ => panic!("expected dependent preparation"),
+    };
+    let invoke_create_id = match session
+        .resume(ExecutionEvent::SkillPrepared {
+            protocol_version: "0.2".into(),
+            request_id: prepare_create_id,
+            outcome: operon_core::SkillPreparation::Ready {
+                arguments: json!({"starts_at":"2026-07-24T10:00:00-05:00"}),
+            },
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::InvokeSkill { request_id, .. }) => request_id,
+        _ => panic!("expected dependent invocation"),
+    };
+    let answer_id = match session
+        .resume(ExecutionEvent::SkillCompleted {
+            protocol_version: "0.2".into(),
+            request_id: invoke_create_id,
+            result: SkillResult {
+                output: json!({"created":true}),
+                sources: vec![],
+                artifacts: vec![],
+            },
+        })
+        .unwrap()
+    {
+        ExecutionStep::Command(ExecutionCommand::Generate {
+            request_id,
+            stage: Stage::Generate,
+            ..
+        }) => request_id,
+        _ => panic!("expected final answer"),
+    };
+    let result = match session
+        .resume(ExecutionEvent::GenerationCompleted {
+            protocol_version: "0.2".into(),
+            request_id: answer_id,
+            response: operon_core::GenerationResponse::text(
+                r#"{"answer":"Booked.","confidence":1.0,"used_source_ids":[]}"#,
+            ),
+        })
+        .unwrap()
+    {
+        ExecutionStep::Complete(result) => result,
+        _ => panic!("expected completion"),
+    };
+    assert_eq!(result.skill_receipts.len(), 2);
+    assert_eq!(result.skill_receipts[1].skill_id, "calendar.create_event");
 }

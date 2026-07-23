@@ -10,13 +10,14 @@ use crate::runtime::{
     validate_output, validate_schema_definition, validate_schema_instance,
 };
 use crate::{
-    ArtifactReference, Clarification, ContextBudget, ExecutionPolicy, ExecutionTrace,
-    GenerationRequest, GenerationResponse, MemoryRecord, MemoryScope, Message, OperonError,
-    OperonResponse, OperonResult, Plan, SessionArtifact, SkillCall, SkillDescriptor, SkillResult,
-    Source, Stage, Strategy, TraceEvent, compile_context,
+    ArtifactReference, Clarification, CompletionContract, ContextBudget, ExecutionPolicy,
+    ExecutionTrace, GenerationRequest, GenerationResponse, MemoryRecord, MemoryScope, Message,
+    OperonError, OperonResponse, OperonResult, Plan, SessionArtifact, SkillCall, SkillDescriptor,
+    SkillReceipt, SkillResult, Source, Stage, Strategy, TraceEvent, compile_context,
 };
 
 pub const EXECUTION_PROTOCOL_VERSION: &str = "0.2";
+pub const EXECUTION_SNAPSHOT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -56,6 +57,10 @@ pub enum ExecutionCommand {
     InvokeSkill {
         protocol_version: String,
         request_id: u64,
+        /// Stable across snapshot/restore so hosts can safely deduplicate a
+        /// side effect if delivery is retried.
+        #[serde(default)]
+        idempotency_key: String,
         skill_id: String,
         arguments: Value,
         requires_user_confirmation: bool,
@@ -200,6 +205,9 @@ pub struct ExecutionResult {
     pub was_repaired: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clarification: Option<Clarification>,
+    /// Ordered, replay-safe evidence of every completed application action.
+    #[serde(default)]
+    pub skill_receipts: Vec<SkillReceipt>,
 }
 
 /// Host response for partial skill-call preparation.
@@ -249,12 +257,15 @@ pub struct SessionConfig {
     /// Application-owned capabilities that the planner may request. An empty
     /// list means no capability invocation is possible.
     pub skills: Vec<SkillDescriptor>,
+    /// Optional deterministic goal contract used by the internal task graph.
+    /// When present, the session cannot silently finish before it is satisfied.
+    pub completion: Option<CompletionContract>,
     /// When set, the session loads bounded typed artifacts before planning.
     pub session_id: Option<String>,
     pub max_session_artifacts: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Pending {
     None,
     SessionLoad(u64),
@@ -270,6 +281,35 @@ enum Pending {
     Complete,
 }
 
+/// Versioned, serializable state for process suspension and crash recovery.
+///
+/// Snapshots may contain host-private artifact values and should be protected
+/// like application state. A host restoring an outstanding command should
+/// resume it with the same request ID; skill commands also carry a stable
+/// idempotency key.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionSnapshot {
+    pub snapshot_version: u32,
+    pub protocol_version: String,
+    query: String,
+    config: SessionConfig,
+    trace: Vec<TraceEvent>,
+    pending: Pending,
+    next_request_id: u64,
+    plan: Option<Plan>,
+    sources: Vec<Source>,
+    memories: Vec<MemoryRecord>,
+    artifacts: Vec<SessionArtifact>,
+    skill_sources: Vec<Source>,
+    completed_skill_ids: BTreeSet<String>,
+    skill_receipts: Vec<SkillReceipt>,
+    next_skill_index: usize,
+    replan_attempts: usize,
+    repair_attempts: usize,
+    was_repaired: bool,
+    pending_payload: Option<AnswerPayload>,
+}
+
 pub struct ExecutionSession {
     query: String,
     config: SessionConfig,
@@ -281,6 +321,8 @@ pub struct ExecutionSession {
     memories: Vec<MemoryRecord>,
     artifacts: Vec<SessionArtifact>,
     skill_sources: Vec<Source>,
+    completed_skill_ids: BTreeSet<String>,
+    skill_receipts: Vec<SkillReceipt>,
     next_skill_index: usize,
     replan_attempts: usize,
     repair_attempts: usize,
@@ -324,6 +366,35 @@ impl ExecutionSession {
                     return Err(OperonError::InvalidPolicy(errors.join("; ")));
                 }
             }
+            if skill
+                .consumes
+                .iter()
+                .chain(&skill.produces)
+                .any(|kind| kind.trim().is_empty())
+            {
+                return Err(OperonError::InvalidPolicy(format!(
+                    "skill {} artifact kinds cannot be empty",
+                    skill.id
+                )));
+            }
+        }
+        if let Some(completion) = config.completion.as_ref() {
+            for skill_id in &completion.required_skill_ids {
+                if !skill_ids.contains(skill_id.as_str()) {
+                    return Err(OperonError::InvalidPolicy(format!(
+                        "completion contract references unknown skill: {skill_id}"
+                    )));
+                }
+            }
+            if completion
+                .required_artifact_kinds
+                .iter()
+                .any(|kind| kind.trim().is_empty())
+            {
+                return Err(OperonError::InvalidPolicy(
+                    "completion artifact kinds cannot be empty".into(),
+                ));
+            }
         }
         Ok(Self {
             query: query.trim().to_owned(),
@@ -336,11 +407,78 @@ impl ExecutionSession {
             memories: Vec::new(),
             artifacts: Vec::new(),
             skill_sources: Vec::new(),
+            completed_skill_ids: BTreeSet::new(),
+            skill_receipts: Vec::new(),
             next_skill_index: 0,
             replan_attempts: 0,
             repair_attempts: 0,
             was_repaired: false,
             pending_payload: None,
+        })
+    }
+
+    /// Captures the deterministic runtime state at the current command
+    /// boundary. The host remains responsible for persisting any outstanding
+    /// command alongside this snapshot.
+    pub fn snapshot(&self) -> ExecutionSnapshot {
+        ExecutionSnapshot {
+            snapshot_version: EXECUTION_SNAPSHOT_VERSION,
+            protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+            query: self.query.clone(),
+            config: self.config.clone(),
+            trace: self.trace.events.clone(),
+            pending: self.pending.clone(),
+            next_request_id: self.next_request_id,
+            plan: self.plan.clone(),
+            sources: self.sources.clone(),
+            memories: self.memories.clone(),
+            artifacts: self.artifacts.clone(),
+            skill_sources: self.skill_sources.clone(),
+            completed_skill_ids: self.completed_skill_ids.clone(),
+            skill_receipts: self.skill_receipts.clone(),
+            next_skill_index: self.next_skill_index,
+            replan_attempts: self.replan_attempts,
+            repair_attempts: self.repair_attempts,
+            was_repaired: self.was_repaired,
+            pending_payload: self.pending_payload.clone(),
+        }
+    }
+
+    /// Restores a session without re-running completed work.
+    pub fn restore(snapshot: ExecutionSnapshot) -> OperonResult<Self> {
+        if snapshot.snapshot_version != EXECUTION_SNAPSHOT_VERSION {
+            return Err(OperonError::InvalidRequest(format!(
+                "unsupported execution snapshot version: {}",
+                snapshot.snapshot_version
+            )));
+        }
+        if snapshot.protocol_version != EXECUTION_PROTOCOL_VERSION {
+            return Err(OperonError::InvalidRequest(format!(
+                "snapshot protocol {} does not match runtime protocol {}",
+                snapshot.protocol_version, EXECUTION_PROTOCOL_VERSION
+            )));
+        }
+        // Re-run normal admission checks so a tampered snapshot cannot bypass
+        // policy, schema, or skill-registry validation.
+        let _ = Self::new(snapshot.query.clone(), snapshot.config.clone())?;
+        Ok(Self {
+            query: snapshot.query,
+            config: snapshot.config,
+            trace: ExecutionTrace::from_events(snapshot.trace),
+            pending: snapshot.pending,
+            next_request_id: snapshot.next_request_id,
+            plan: snapshot.plan,
+            sources: snapshot.sources,
+            memories: snapshot.memories,
+            artifacts: snapshot.artifacts,
+            skill_sources: snapshot.skill_sources,
+            completed_skill_ids: snapshot.completed_skill_ids,
+            skill_receipts: snapshot.skill_receipts,
+            next_skill_index: snapshot.next_skill_index,
+            replan_attempts: snapshot.replan_attempts,
+            repair_attempts: snapshot.repair_attempts,
+            was_repaired: snapshot.was_repaired,
+            pending_payload: snapshot.pending_payload,
         })
     }
 
@@ -498,6 +636,7 @@ impl ExecutionSession {
     }
 
     fn plan_command(&mut self) -> ExecutionStep {
+        let ready_skill_ids = self.ready_skill_ids();
         let request_id = self.allocate_request_id();
         self.pending = Pending::Plan(request_id);
         ExecutionStep::Command(ExecutionCommand::Generate {
@@ -508,13 +647,15 @@ impl ExecutionSession {
                 messages: vec![
                     Message::system(PLAN_SYSTEM_PROMPT),
                     Message::user(format!(
-                        "QUERY:\n{}\n\nTYPED SESSION ARTIFACTS (references only):\n{}\n\nAUTHORIZED SKILLS:\n{}",
+                        "QUERY:\n{}\n\nTYPED SESSION ARTIFACTS (references only):\n{}\n\nCOMPLETION CONTRACT:\n{}\n\nREADY SKILLS:\n{}",
                         self.query,
                         self.artifact_catalog(),
-                        self.skill_catalog()
+                        serde_json::to_string_pretty(&self.config.completion)
+                            .expect("completion contract serializes"),
+                        self.skill_catalog_for(&ready_skill_ids)
                     )),
                 ],
-                schema: Some(plan_schema()),
+                schema: Some(plan_schema_for(&ready_skill_ids)),
                 temperature: 0.0,
                 max_tokens: Some(500),
                 reasoning_effort: Some("none".into()),
@@ -532,7 +673,7 @@ impl ExecutionSession {
             .retain(|item| !item.trim().is_empty());
         let requested_skill_calls = plan.skill_calls.len();
         plan.skill_calls
-            .retain(|call| self.is_known_skill_call(call));
+            .retain(|call| self.is_ready_skill_call(call));
         plan.needs_grounding = self.config.has_grounding;
         if plan.intent.is_empty() {
             return Err(OperonError::InvalidModelOutput(
@@ -565,8 +706,24 @@ impl ExecutionSession {
         {
             return Ok(self.complete_clarification(clarification));
         }
+        if self.config.completion.is_some() && self.completion_satisfied() {
+            return Ok(self.after_plan_without_skills());
+        }
         if let Some(command) = self.next_skill_command() {
             return Ok(command);
+        }
+        if self.has_unmet_completion_contract() {
+            let ready = self.ready_skill_ids();
+            return Ok(self.complete_clarification(Clarification {
+                prompt: if ready.is_empty() {
+                    "I cannot complete the requested action until its required context is available."
+                        .into()
+                } else {
+                    "I need a little more information to choose the next valid action.".into()
+                },
+                missing_fields: self.missing_completion_requirements(),
+                skill_id: None,
+            }));
         }
         if self.config.policy.require_skill_or_clarification {
             return Ok(self.complete_clarification(Clarification {
@@ -621,11 +778,17 @@ impl ExecutionSession {
             .join("\n")
     }
 
-    fn skill_catalog(&self) -> String {
-        if self.config.skills.is_empty() {
+    fn skill_catalog_for(&self, skill_ids: &BTreeSet<String>) -> String {
+        let skills: Vec<&SkillDescriptor> = self
+            .config
+            .skills
+            .iter()
+            .filter(|skill| skill_ids.contains(&skill.id))
+            .collect();
+        if skills.is_empty() {
             return "(none)".into();
         }
-        serde_json::to_string_pretty(&self.config.skills).expect("skill catalog serializes")
+        serde_json::to_string_pretty(&skills).expect("ready skill catalog serializes")
     }
 
     fn artifact_catalog(&self) -> String {
@@ -644,6 +807,107 @@ impl ExecutionSession {
             .any(|skill| skill.id == call.skill_id)
     }
 
+    fn is_ready_skill_call(&self, call: &SkillCall) -> bool {
+        self.is_known_skill_call(call) && self.ready_skill_ids().contains(&call.skill_id)
+    }
+
+    fn available_artifact_kinds(&self) -> BTreeSet<String> {
+        self.artifacts
+            .iter()
+            .map(|artifact| artifact.kind.clone())
+            .collect()
+    }
+
+    /// Computes the graph slice that can contribute to the declared goal by
+    /// walking backward from required skills and artifact kinds.
+    fn relevant_skill_ids(&self) -> BTreeSet<String> {
+        let Some(contract) = self.config.completion.as_ref() else {
+            return self
+                .config
+                .skills
+                .iter()
+                .map(|skill| skill.id.clone())
+                .collect();
+        };
+        let mut relevant: BTreeSet<String> = contract.required_skill_ids.iter().cloned().collect();
+        let mut needed_kinds: BTreeSet<String> =
+            contract.required_artifact_kinds.iter().cloned().collect();
+        for skill in &self.config.skills {
+            if relevant.contains(&skill.id) {
+                needed_kinds.extend(skill.consumes.iter().cloned());
+            }
+        }
+        loop {
+            let before = relevant.len();
+            for skill in &self.config.skills {
+                if skill
+                    .produces
+                    .iter()
+                    .any(|kind| needed_kinds.contains(kind))
+                {
+                    relevant.insert(skill.id.clone());
+                    needed_kinds.extend(skill.consumes.iter().cloned());
+                }
+            }
+            if relevant.len() == before {
+                break;
+            }
+        }
+        relevant
+    }
+
+    fn ready_skill_ids(&self) -> BTreeSet<String> {
+        let available = self.available_artifact_kinds();
+        let relevant = self.relevant_skill_ids();
+        self.config
+            .skills
+            .iter()
+            .filter(|skill| relevant.contains(&skill.id))
+            .filter(|skill| !self.completed_skill_ids.contains(&skill.id))
+            .filter(|skill| skill.consumes.iter().all(|kind| available.contains(kind)))
+            .map(|skill| skill.id.clone())
+            .collect()
+    }
+
+    fn completion_satisfied(&self) -> bool {
+        let Some(contract) = self.config.completion.as_ref() else {
+            return false;
+        };
+        let kinds = self.available_artifact_kinds();
+        contract
+            .required_skill_ids
+            .iter()
+            .all(|id| self.completed_skill_ids.contains(id))
+            && contract
+                .required_artifact_kinds
+                .iter()
+                .all(|kind| kinds.contains(kind))
+    }
+
+    fn has_unmet_completion_contract(&self) -> bool {
+        self.config.completion.is_some() && !self.completion_satisfied()
+    }
+
+    fn missing_completion_requirements(&self) -> Vec<String> {
+        let Some(contract) = self.config.completion.as_ref() else {
+            return Vec::new();
+        };
+        let kinds = self.available_artifact_kinds();
+        contract
+            .required_skill_ids
+            .iter()
+            .filter(|id| !self.completed_skill_ids.contains(*id))
+            .map(|id| format!("skill:{id}"))
+            .chain(
+                contract
+                    .required_artifact_kinds
+                    .iter()
+                    .filter(|kind| !kinds.contains(*kind))
+                    .map(|kind| format!("artifact:{kind}")),
+            )
+            .collect()
+    }
+
     fn next_skill_command(&mut self) -> Option<ExecutionStep> {
         let call = self
             .plan
@@ -656,7 +920,8 @@ impl ExecutionSession {
             .skills
             .iter()
             .find(|skill| skill.id == call.skill_id)
-            .is_some();
+            .is_some()
+            && self.ready_skill_ids().contains(&call.skill_id);
         if !skill_exists {
             return None;
         }
@@ -672,6 +937,14 @@ impl ExecutionSession {
     }
 
     fn accept_skill_result(&mut self, result: SkillResult) -> OperonResult<ExecutionStep> {
+        let invocation_request_id = match self.pending {
+            Pending::Skill(request_id) => request_id,
+            _ => {
+                return Err(OperonError::InvalidRequest(
+                    "skill completion has no pending invocation".into(),
+                ));
+            }
+        };
         let call = self
             .plan
             .as_ref()
@@ -693,22 +966,74 @@ impl ExecutionSession {
         if !errors.is_empty() {
             return Err(OperonError::Validation(errors));
         }
+        let published_kinds: BTreeSet<&str> = result
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.kind.as_str())
+            .collect();
+        let missing_promises: Vec<&str> = skill
+            .produces
+            .iter()
+            .map(String::as_str)
+            .filter(|kind| !published_kinds.contains(kind))
+            .collect();
+        if !missing_promises.is_empty() {
+            return Err(OperonError::Validation(vec![format!(
+                "skill {} did not publish promised artifact kinds: {}",
+                skill.id,
+                missing_promises.join(", ")
+            )]));
+        }
+        let skill_id = skill.id.clone();
+        let artifact_ids = result
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.id.clone())
+            .collect();
+        let artifact_kinds = result
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.kind.clone())
+            .collect();
         let text = serde_json::to_string_pretty(&result.output)
             .map_err(|error| OperonError::InvalidModelOutput(error.to_string()))?;
         self.skill_sources.push(Source {
             id: format!("skill-{}", self.next_skill_index + 1),
-            path: format!("skill://{}", skill.id),
+            path: format!("skill://{}", skill_id),
             text,
             score: 1.0,
         });
         self.skill_sources.extend(result.sources);
         self.artifacts.extend(result.artifacts);
+        self.completed_skill_ids.insert(skill_id.clone());
+        self.skill_receipts.push(SkillReceipt {
+            idempotency_key: format!("operon:skill:{skill_id}:request:{invocation_request_id}"),
+            skill_id: skill_id.clone(),
+            artifact_ids,
+            artifact_kinds,
+        });
         self.trace.add(
             Stage::Skill,
             "completed application-owned skill",
-            json!({ "skill_id": skill.id, "sources": self.skill_sources.len(), "artifacts": self.artifacts.len() }),
+            json!({ "skill_id": skill_id, "sources": self.skill_sources.len(), "artifacts": self.artifacts.len(), "completion_satisfied": self.completion_satisfied() }),
         );
         self.next_skill_index = 0;
+        if self.completion_satisfied() {
+            return Ok(self.after_plan_without_skills());
+        }
+        let ready = self.ready_skill_ids();
+        if ready.is_empty() {
+            if self.has_unmet_completion_contract() {
+                return Ok(self.complete_clarification(Clarification {
+                    prompt: "I cannot complete the requested action until its required context is available.".into(),
+                    missing_fields: self.missing_completion_requirements(),
+                    skill_id: None,
+                }));
+            }
+            if self.replan_attempts >= self.config.policy.max_replans {
+                return Ok(self.after_plan_without_skills());
+            }
+        }
         if self.replan_attempts < self.config.policy.max_replans {
             self.replan_attempts += 1;
             return Ok(self.replan_command());
@@ -752,6 +1077,7 @@ impl ExecutionSession {
                 Ok(ExecutionStep::Command(ExecutionCommand::InvokeSkill {
                     protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
                     request_id,
+                    idempotency_key: format!("operon:skill:{skill_id}:request:{request_id}"),
                     skill_id,
                     arguments,
                     requires_user_confirmation,
@@ -771,6 +1097,7 @@ impl ExecutionSession {
     }
 
     fn replan_command(&mut self) -> ExecutionStep {
+        let ready_skill_ids = self.ready_skill_ids();
         let request_id = self.allocate_request_id();
         self.pending = Pending::Replan(request_id);
         ExecutionStep::Command(ExecutionCommand::Generate {
@@ -781,14 +1108,16 @@ impl ExecutionSession {
                 messages: vec![
                     Message::system(REPLAN_SYSTEM_PROMPT),
                     Message::user(format!(
-                        "QUERY:\n{}\n\nTYPED SESSION ARTIFACTS (references only):\n{}\n\nCOMPLETED SKILL RESULTS:\n{}\n\nAUTHORIZED SKILLS:\n{}",
+                        "QUERY:\n{}\n\nTYPED SESSION ARTIFACTS (references only):\n{}\n\nCOMPLETED SKILL RESULTS:\n{}\n\nCOMPLETION CONTRACT:\n{}\n\nREADY SKILLS (the only valid next actions):\n{}",
                         self.query,
                         self.artifact_catalog(),
                         format_sources(&self.skill_sources, self.config.policy.max_context_chars),
-                        self.skill_catalog()
+                        serde_json::to_string_pretty(&self.config.completion)
+                            .expect("completion contract serializes"),
+                        self.skill_catalog_for(&ready_skill_ids)
                     )),
                 ],
-                schema: Some(plan_schema()),
+                schema: Some(plan_schema_for(&ready_skill_ids)),
                 temperature: 0.0,
                 max_tokens: Some(500),
                 reasoning_effort: Some("none".into()),
@@ -798,11 +1127,27 @@ impl ExecutionSession {
     }
 
     fn accept_replan(&mut self, response: GenerationResponse) -> OperonResult<ExecutionStep> {
+        let ready_skill_ids = self.ready_skill_ids();
         let next: Plan = parse_model_json(&response.text)?;
+        if let Some(invalid) = next
+            .skill_calls
+            .iter()
+            .find(|call| !ready_skill_ids.contains(&call.skill_id))
+        {
+            self.trace.add(
+                Stage::Replan,
+                "rejected an action outside the task graph ready set",
+                json!({ "skill_id": invalid.skill_id, "ready_set": ready_skill_ids }),
+            );
+            if self.replan_attempts < self.config.policy.max_replans {
+                self.replan_attempts += 1;
+                return Ok(self.replan_command());
+            }
+        }
         let calls: Vec<SkillCall> = next
             .skill_calls
             .into_iter()
-            .filter(|call| self.is_known_skill_call(call))
+            .filter(|call| ready_skill_ids.contains(&call.skill_id))
             .take(1)
             .collect();
         let clarification = next.clarification;
@@ -1067,6 +1412,7 @@ impl ExecutionSession {
             declared_source_ids,
             was_repaired: self.was_repaired,
             clarification: None,
+            skill_receipts: self.skill_receipts.clone(),
         }))
     }
 
@@ -1090,6 +1436,7 @@ impl ExecutionSession {
             declared_source_ids: Vec::new(),
             was_repaired: false,
             clarification: Some(clarification),
+            skill_receipts: self.skill_receipts.clone(),
         }))
     }
 
@@ -1115,4 +1462,13 @@ fn usage_data(response: &GenerationResponse) -> Value {
         "completion_tokens": response.completion_tokens,
         "finish_reason": response.finish_reason
     })
+}
+
+fn plan_schema_for(ready_skill_ids: &BTreeSet<String>) -> Value {
+    let mut schema = plan_schema();
+    if !ready_skill_ids.is_empty() {
+        schema["properties"]["skill_calls"]["items"]["properties"]["skill_id"]["enum"] =
+            json!(ready_skill_ids.iter().collect::<Vec<_>>());
+    }
+    schema
 }

@@ -1,0 +1,50 @@
+{
+  "suite": "appbench",
+  "suite_version": "0.1",
+  "protocol_version": "appbench-0.2",
+  "suite_digest": "7c2bbc366f5eb3e404ee58c015b860eedd73d53c8c97e0bb8191834b423bd49f",
+  "run_id": "dce66b7f-0e45-4482-a3c0-bb23135d9014",
+  "model": "qwen3:4b",
+  "model_quantization": "Q4_K_M",
+  "category": "dependent_chain",
+  "cases": 4,
+  "repetitions": 3,
+  "runs_per_configuration": 12,
+  "evaluator_version": "0.3",
+  "operon_version": "0.2.0",
+  "summary": {
+    "direct_raw": {
+      "task_completion_rate": 0.0,
+      "skill_routing_accuracy": 0.25,
+      "exact_argument_accuracy": 0.0,
+      "median_latency_ms": 2457.29,
+      "p95_latency_ms": 2678.2,
+      "average_model_calls": 3.75,
+      "average_prompt_tokens": 1619.25,
+      "average_completion_tokens": 201.75
+    },
+    "operon_linear": {
+      "task_completion_rate": 0.5,
+      "skill_routing_accuracy": 0.5,
+      "exact_argument_accuracy": 0.5,
+      "median_latency_ms": 4320.675,
+      "p95_latency_ms": 6220.8,
+      "average_model_calls": 4.0,
+      "average_prompt_tokens": 1692.25,
+      "average_completion_tokens": 469.75
+    },
+    "operon": {
+      "task_completion_rate": 1.0,
+      "skill_routing_accuracy": 1.0,
+      "exact_argument_accuracy": 1.0,
+      "median_latency_ms": 3140.405,
+      "p95_latency_ms": 4149.86,
+      "average_model_calls": 3.0,
+      "average_prompt_tokens": 1081.75,
+      "average_completion_tokens": 341.8333333333333
+    }
+  },
+  "host": "Apple arm64",
+  "run_date": "2026-07-23",
+  "notes": "Same four dependent-chain cases and same local model across all configurations. Operon v0.2 adds typed capability dependencies, an explicit completion contract, and ready-set constrained structured decoding."
+}

@@ -163,8 +163,40 @@ pub struct SkillDescriptor {
     pub description: String,
     pub input_schema: Value,
     pub output_schema: Value,
+    /// Typed artifact kinds that must exist before this capability is ready.
+    /// Empty keeps the descriptor fully backward compatible.
+    #[serde(default)]
+    pub consumes: Vec<String>,
+    /// Typed artifact kinds this capability promises to publish when it
+    /// succeeds. The host still supplies and validates the concrete artifacts.
+    #[serde(default)]
+    pub produces: Vec<String>,
     #[serde(default)]
     pub requires_user_confirmation: bool,
+}
+
+/// App-owned definition of what must be true before a turn may complete.
+///
+/// This keeps goal completion deterministic: a small model may propose the
+/// next action, but it cannot declare success while required capabilities or
+/// artifacts are still missing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct CompletionContract {
+    #[serde(default)]
+    pub required_skill_ids: Vec<String>,
+    #[serde(default)]
+    pub required_artifact_kinds: Vec<String>,
+}
+
+/// Replay-safe evidence that an application capability completed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillReceipt {
+    pub idempotency_key: String,
+    pub skill_id: String,
+    #[serde(default)]
+    pub artifact_ids: Vec<String>,
+    #[serde(default)]
+    pub artifact_kinds: Vec<String>,
 }
 
 /// A typed skill request selected by the planning model from the host registry.

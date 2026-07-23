@@ -8,5 +8,6 @@ commands, results, validation decisions, and traces.
 - [Trace format](trace-format.md)
 - [Local context and memory architecture](../docs/research/local-memory-architecture.md)
 - [Command/event architecture decision](../docs/adr/0001-command-event-core.md)
+- [TaskGraph ready-set architecture decision](../docs/adr/0003-taskgraph-ready-set.md)
 - [Command JSON Schema](schemas/execution-command.schema.json)
 - [Event JSON Schema](schemas/execution-event.schema.json)

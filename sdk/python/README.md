@@ -118,3 +118,41 @@ skill result and newly published artifacts to select one bounded next action.
 It suppresses a repeated skill during that turn before another side effect can
 run. Set `require_skill_or_clarification=True` for turns where a generic answer
 is not an acceptable fallback.
+
+## TaskGraph completion contracts
+
+Operon v0.2 can turn a skill catalog into a bounded execution graph without a
+separate workflow builder. Declare typed artifact dependencies on each
+descriptor, then tell the turn what must be true before it may finish:
+
+```python
+from operon import CompletionContract
+
+find_slot = SkillDescriptor(
+    id="calendar.find_slot",
+    description="Find an available calendar slot.",
+    input_schema=find_schema,
+    output_schema=find_result_schema,
+    produces=("calendar.slot",),
+)
+create_event = SkillDescriptor(
+    id="calendar.create_event",
+    description="Create an event from a selected slot.",
+    input_schema=create_schema,
+    output_schema=create_result_schema,
+    consumes=("calendar.slot",),
+)
+
+result = assistant.run(
+    "Find 30 minutes Friday and schedule a review with Maya.",
+    completion=CompletionContract(
+        required_skill_ids=("calendar.create_event",),
+    ),
+)
+```
+
+Operon walks backward from the goal, admits only skills whose dependencies are
+available, constrains structured decoding to that ready set, and rejects normal
+completion while requirements remain. Host preparation still resolves private
+artifact values and validates every call. `result.skill_receipts` provides an
+ordered audit of the actions that actually completed.

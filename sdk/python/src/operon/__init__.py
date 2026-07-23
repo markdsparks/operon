@@ -9,7 +9,7 @@ from .memory import (
     MemorySensitivity,
     SQLiteMemoryStore,
 )
-from .models import Clarification, OperonResponse, Policy, SessionArtifact, SkillCall, SkillDescriptor, SkillResult
+from .models import Clarification, CompletionContract, OperonResponse, Policy, SessionArtifact, SkillCall, SkillDescriptor, SkillReceipt, SkillResult
 from .providers.openai_compatible import OpenAICompatibleProvider
 from .runtime import Operon, OperonValidationError
 from .sessions import SQLiteSessionStore
@@ -18,6 +18,7 @@ from .skills import Skill, SkillPreparation, SkillRegistry
 __all__ = [
     "LocalDocuments",
     "Clarification",
+    "CompletionContract",
     "MemoryAuthority",
     "MemoryKind",
     "MemoryRecord",
@@ -33,10 +34,11 @@ __all__ = [
     "Skill",
     "SkillCall",
     "SkillDescriptor",
+    "SkillReceipt",
     "SkillRegistry",
     "SkillResult",
     "SkillPreparation",
     "SessionArtifact",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

@@ -7,6 +7,7 @@ from collections import deque
 from pathlib import Path
 
 from operon import (
+    CompletionContract,
     LocalDocuments,
     Operon,
     OperonValidationError,
@@ -253,6 +254,100 @@ class OperonTests(unittest.TestCase):
         self.assertIsNotNone(response.clarification)
         self.assertIn("more information", response.answer)
         self.assertEqual(len(provider.requests), 1)
+
+    def test_task_graph_constrains_replanning_to_a_valid_dependency_chain(self) -> None:
+        provider = ScriptedProvider(
+            [
+                {
+                    "intent": "find and book",
+                    "subquestions": [],
+                    "needs_grounding": False,
+                    "answer_requirements": [],
+                    "skill_calls": [
+                        {"skill_id": "calendar.find", "arguments": {"day": "Friday"}}
+                    ],
+                },
+                {
+                    "intent": "book selected slot",
+                    "subquestions": [],
+                    "needs_grounding": False,
+                    "answer_requirements": [],
+                    "skill_calls": [
+                        {"skill_id": "calendar.book", "arguments": {"slot_ref": "slot-1"}}
+                    ],
+                },
+                {
+                    "answer": "Booked [S2].",
+                    "confidence": 1.0,
+                    "used_source_ids": ["S2"],
+                },
+            ]
+        )
+        invoked: list[str] = []
+        find = Skill(
+            SkillDescriptor(
+                id="calendar.find",
+                description="Find a slot.",
+                input_schema={"type": "object", "additionalProperties": True},
+                output_schema={"type": "object", "additionalProperties": True},
+                produces=("calendar.slot",),
+            ),
+            lambda _: (
+                invoked.append("calendar.find")
+                or SkillResult(
+                    {"found": True},
+                    artifacts=(
+                        SessionArtifact(
+                            "slot-1",
+                            "calendar.slot",
+                            "Friday at 10 AM",
+                            {"slot_id": "slot-1"},
+                        ),
+                    ),
+                )
+            ),
+        )
+        book = Skill(
+            SkillDescriptor(
+                id="calendar.book",
+                description="Book a selected slot.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"slot_id": {"type": "string"}},
+                    "required": ["slot_id"],
+                    "additionalProperties": False,
+                },
+                output_schema={"type": "object", "additionalProperties": True},
+                consumes=("calendar.slot",),
+            ),
+            lambda _: invoked.append("calendar.book") or SkillResult({"booked": True}),
+            prepare=lambda _, artifacts: SkillPreparation.ready(
+                {"slot_id": artifacts[-1].value["slot_id"]}
+            ),
+        )
+
+        response = Operon(
+            provider,
+            policy=Policy(planning="always", require_skill_or_clarification=True),
+            skills=SkillRegistry([find, book]),
+        ).run(
+            "Find a time Friday and book it.",
+            completion=CompletionContract(required_skill_ids=("calendar.book",)),
+        )
+
+        self.assertEqual(invoked, ["calendar.find", "calendar.book"])
+        self.assertEqual(len(provider.requests), 3)
+        self.assertEqual(
+            [receipt.skill_id for receipt in response.skill_receipts],
+            ["calendar.find", "calendar.book"],
+        )
+        self.assertIn(
+            "selected bounded next action",
+            [event.message for event in response.trace.events],
+        )
+        replan_prompt = provider.requests[1].messages[1]["content"]
+        self.assertIn("calendar.book", replan_prompt)
+        self.assertNotIn('"id": "calendar.find"', replan_prompt)
 
     def test_suppresses_repeated_skill_during_replanning(self) -> None:
         repeated_plan = {

@@ -61,6 +61,13 @@ class SkillRegistry:
             descriptor = skill.descriptor
             if not descriptor.id.strip() or descriptor.id in self._skills:
                 raise ValueError(f"invalid or duplicate skill id: {descriptor.id!r}")
+            if any(
+                not kind.strip()
+                for kind in (*descriptor.consumes, *descriptor.produces)
+            ):
+                raise ValueError(
+                    f"skill artifact kinds cannot be empty: {descriptor.id!r}"
+                )
             errors = validate_schema_definition(descriptor.input_schema)
             errors += validate_schema_definition(descriptor.output_schema)
             if errors:

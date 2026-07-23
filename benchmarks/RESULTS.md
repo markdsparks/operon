@@ -2,7 +2,7 @@
 
 For app-task completion, reference resolution, skill preparation,
 clarification, and dependent chains, see the separate
-[AppBench v0.1 results](APPBENCH_RESULTS.md).
+[AppBench v0.1 and v0.2 results](APPBENCH_RESULTS.md).
 
 ## Qwen3 4B, 30-case development run
 

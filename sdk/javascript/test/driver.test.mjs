@@ -7,6 +7,7 @@ class ScriptedSession {
   constructor(steps) { this.steps = [...steps]; this.events = []; }
   start() { return JSON.stringify(this.steps.shift()); }
   resume(event) { this.events.push(JSON.parse(event)); return JSON.stringify(this.steps.shift()); }
+  snapshot() { return JSON.stringify({ snapshot_version: 1 }); }
 }
 
 const generate = {
@@ -42,6 +43,7 @@ test("dispatches an app-owned skill and preserves its typed result", async () =>
     kind: "command",
     command: {
       kind: "invoke_skill", protocol_version: "0.2", request_id: 4,
+      idempotency_key: "operon:skill:calendar.availability:request:4",
       skill_id: "calendar.availability", arguments: { day: "Friday" },
       requires_user_confirmation: true
     }
@@ -93,4 +95,35 @@ test("creates and frees a wasm-bindgen session", async () => {
   );
   assert.equal(answer.answer, "Yes");
   assert.equal(freed, true);
+});
+
+test("checkpoints and restores an outstanding command", async () => {
+  let checkpoint;
+  class RestorableSession extends ScriptedSession {
+    constructor() {
+      super([generate, { kind: "complete", result: { answer: "Recovered" } }]);
+    }
+    static fromSnapshot(snapshot) {
+      assert.deepEqual(JSON.parse(snapshot), { snapshot_version: 1 });
+      return new ScriptedSession([
+        { kind: "complete", result: { answer: "Recovered" } }
+      ]);
+    }
+  }
+  const driver = createBrowserDriver({
+    execution_protocol_version: () => "0.2",
+    OperonWasmSession: RestorableSession
+  });
+  await driver.run("Recover this", {}, {
+    checkpoint: async (value) => { checkpoint = value; },
+    generate: async () => ({ text: "{}" })
+  });
+
+  const result = await driver.restore(checkpoint, {
+    generate: async (command) => {
+      assert.equal(command.request_id, 1);
+      return { text: "{}" };
+    }
+  });
+  assert.equal(result.answer, "Recovered");
 });
