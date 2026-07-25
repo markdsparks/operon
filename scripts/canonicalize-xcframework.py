@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Canonicalize generated XCFramework metadata for reproducible release ZIPs."""
+"""Canonicalize generated XCFramework metadata for stable release archives."""
 
 from __future__ import annotations
 

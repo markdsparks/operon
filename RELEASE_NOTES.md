@@ -5,8 +5,8 @@ grounded answers a stronger, inspectable evidence contract.
 
 ## Install it instead of vendoring it
 
-The repository root is now a Swift package. A tagged release ships a
-reproducible `OperonCore.xcframework.zip` asset with the checksum committed in
+The repository root is now a Swift package. A tagged release ships a canonical,
+checksummed `OperonCore.xcframework.zip` asset whose checksum is committed in
 `Package.swift`, so an app can use:
 
 ```swift

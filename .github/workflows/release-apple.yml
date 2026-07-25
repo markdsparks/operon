@@ -31,18 +31,26 @@ jobs:
       - run: scripts/build-apple-xcframework.sh
       - run: scripts/verify-apple-xcframework.sh
       - run: scripts/package-apple-xcframework.sh
-      - name: Verify the SwiftPM checksum committed with this release
-        run: |
-          expected="$(tr -d '[:space:]' < scripts/operon-core-release.checksum)"
-          actual="$(xcrun swift package compute-checksum artifacts/OperonCore.xcframework.zip)"
-          test "$actual" = "$expected"
-      - name: Publish release asset
+      - name: Verify or publish the canonical SwiftPM artifact
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
+          expected="$(tr -d '[:space:]' < scripts/operon-core-release.checksum)"
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" artifacts/OperonCore.xcframework.zip --clobber
+            mkdir -p published-artifact
+            gh release download "$RELEASE_TAG" \
+              --pattern OperonCore.xcframework.zip \
+              --dir published-artifact
+            actual="$(xcrun swift package compute-checksum published-artifact/OperonCore.xcframework.zip)"
           else
+            actual="$(xcrun swift package compute-checksum artifacts/OperonCore.xcframework.zip)"
+          fi
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Expected SwiftPM checksum: $expected" >&2
+            echo "Actual SwiftPM checksum:   $actual" >&2
+            exit 1
+          fi
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" artifacts/OperonCore.xcframework.zip --generate-notes
           fi

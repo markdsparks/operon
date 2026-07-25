@@ -13,8 +13,8 @@ if [[ ! -d "$FRAMEWORK" ]]; then
   exit 1
 fi
 
-# Normalize generated timestamps and file order so CI and local release builds
-# produce the same SwiftPM checksum from identical compiler output.
+# Normalize generated timestamps and file order so repeated packaging of the
+# same XCFramework produces the same SwiftPM checksum.
 find "$FRAMEWORK" -exec touch -t 202001010000 {} +
 rm -f "$ARCHIVE"
 (
