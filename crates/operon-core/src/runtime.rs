@@ -1229,6 +1229,49 @@ mod tests {
         );
     }
 
+    /// An abstention keeps the context it was reached from.
+    ///
+    /// Without this the terminal result contradicted its own trace: the
+    /// ground stage reported the sources it retrieved and the result then
+    /// returned none, leaving a host unable to distinguish "nothing was
+    /// found" from "these were found and none supported a claim". Those are
+    /// different sentences to show a user, and only one of them is honest
+    /// about the work that was done.
+    #[test]
+    fn an_abstention_still_reports_the_sources_it_considered() {
+        let provider = ScriptedProvider::local(&[
+            r#"{"claims":[],"confidence":0.0,"abstain_reason":"The sources do not state an override code."}"#,
+        ]);
+        let grounding = StaticGrounding;
+        let policy = ExecutionPolicy {
+            planning: Strategy::Never,
+            grounding_mode: GroundingMode::Extractive,
+            max_repair_attempts: 0,
+            ..ExecutionPolicy::default()
+        };
+        let runtime = OperonRuntime::new(&provider, Some(&grounding), policy).unwrap();
+
+        let response = runtime.run("What is the override code?").unwrap();
+
+        assert_eq!(response.status, ExecutionStatus::Abstained);
+        assert!(
+            !response.sources.is_empty(),
+            "an abstention must carry the sources it considered"
+        );
+        // And it agrees with what the trace said the ground stage returned.
+        let grounded = response
+            .trace
+            .events
+            .iter()
+            .find(|event| event.stage == Stage::Ground)
+            .expect("ground stage recorded");
+        assert_eq!(
+            grounded.data["sources"].as_u64().unwrap() as usize,
+            response.sources.len(),
+            "result and trace must agree on how many sources were retrieved"
+        );
+    }
+
     #[test]
     fn schema_refs_and_array_bounds_are_enforced() {
         let schema = json!({

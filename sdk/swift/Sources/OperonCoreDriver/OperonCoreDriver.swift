@@ -58,7 +58,7 @@ public final class OperonCoreDriver: @unchecked Sendable {
             validateOutput: nil,
             eventSink: { continuation.yield($0) }
           )
-          continuation.yield(.finished(try result.status()))
+          continuation.yield(.finished(status: try result.status(), json: result.json))
           continuation.finish()
         } catch {
           continuation.finish(throwing: error)
