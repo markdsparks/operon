@@ -19,6 +19,7 @@
       <nav aria-label="Primary navigation">
         <a href="#upgrade">Drop it in</a>
         <a href="#why">Why Operon</a>
+        <a href="#examples">Examples</a>
         <a href="#runtime">How it works</a>
         <a href="#capabilities">Capabilities</a>
         <a href="#proof">Proof</a>
@@ -79,6 +80,100 @@
             <p class="quote">A bounded execution—using typed context, app-owned skills, and evidence.</p>
             <ul><li>Resolves references from structured session state</li><li>Clarifies missing input before acting</li><li>Returns validated output, receipts, and a trace</li></ul>
           </article>
+        </div>
+      </section>
+
+      <section class="examples-section" id="examples">
+        <div class="wrap">
+          <div class="examples-head">
+            <div><p class="eyebrow">See the difference</p><h2>Same local model.<br /><em>Different system.</em></h2></div>
+            <div><p>A model alone only generates the next response. Operon gives that model typed state, app-owned capabilities, evidence rules, and bounded outcomes.</p><small>Representative application flows, simplified to expose the runtime boundary—not benchmark transcripts.</small></div>
+          </div>
+
+          <div class="example-tabs" role="tablist" aria-label="Operon capability examples">
+            <button id="tab-followup" type="button" role="tab" aria-selected="true" aria-controls="example-followup" tabindex="0" data-example-tab="followup"><span>01</span><b>Follow-up state</b><small>“the second one”</small></button>
+            <button id="tab-evidence" type="button" role="tab" aria-selected="false" aria-controls="example-evidence" tabindex="-1" data-example-tab="evidence"><span>02</span><b>Grounded answers</b><small>prove or abstain</small></button>
+            <button id="tab-memory" type="button" role="tab" aria-selected="false" aria-controls="example-memory" tabindex="-1" data-example-tab="memory"><span>03</span><b>Memory + freshness</b><small>remember the right thing</small></button>
+            <button id="tab-graph" type="button" role="tab" aria-selected="false" aria-controls="example-graph" tabindex="-1" data-example-tab="graph"><span>04</span><b>Dependent work</b><small>finish the whole job</small></button>
+          </div>
+
+          <div class="example-panels">
+            <article class="example-panel" id="example-followup" role="tabpanel" aria-labelledby="tab-followup" data-example-panel="followup">
+              <header class="example-query"><div><span>IN A BOOKING APP · TURN 3</span><p>“Book the second one tomorrow morning.”</p></div><small>The app already displayed three results and knows the user’s timezone.</small></header>
+              <div class="example-sides">
+                <section class="example-side model-side">
+                  <header><span>LOCAL MODEL ALONE</span><b>looks finished</b></header>
+                  <div class="example-response"><small>MODEL OUTPUT</small><blockquote>“Done—Atlas is booked for 9:00 AM tomorrow.”</blockquote></div>
+                  <ul><li>No canonical ID for “the second one”</li><li>Invented a time without checking availability</li><li>No confirmation, app call, or booking receipt</li></ul>
+                  <div class="example-outcome unsafe"><span>PLAUSIBLE TEXT</span><b>Not a verified action</b></div>
+                </section>
+                <section class="example-side operon-side">
+                  <header><span>LOCAL MODEL + OPERON</span><b>safe next step</b></header>
+                  <div class="example-trace"><small>BOUNDED TRACE</small><code><i>session.result[1]</i> → place_atlas</code><code><i>tomorrow</i> → 2026-08-14 · America/Chicago</code><code><i>availability.search</i> → 09:30 available</code><code><i>booking.create</i> → confirmation required</code></div>
+                  <div class="example-response"><small>APP RESPONSE</small><blockquote>“Atlas has 9:30 AM available tomorrow. Want me to book it?”</blockquote></div>
+                  <div class="example-outcome safe"><span>CONFIRMATION REQUIRED</span><b>Typed state + prepared skill</b></div>
+                </section>
+              </div>
+              <footer><b>What Operon added</b><span>Structured session artifacts</span><span>Canonical argument preparation</span><span>Confirmation policy</span></footer>
+            </article>
+
+            <article class="example-panel" id="example-evidence" role="tabpanel" aria-labelledby="tab-evidence" data-example-panel="evidence" hidden>
+              <header class="example-query"><div><span>IN AN EMPLOYEE APP · LOCAL POLICY</span><p>“What’s the deadline, and can my manager extend it to 60 days?”</p></div><small>Available source: “Expense reports must be submitted within 30 calendar days of the purchase.”</small></header>
+              <div class="example-sides">
+                <section class="example-side model-side">
+                  <header><span>LOCAL MODEL ALONE</span><b>fills the gap</b></header>
+                  <div class="example-response"><small>MODEL OUTPUT</small><blockquote>“The deadline is 30 days. Your manager can approve a 60-day extension.”</blockquote></div>
+                  <ul><li>The exception is absent from the supplied policy</li><li>A source could be cited without supporting the claim</li><li>The answer sounds helpful but invents authority</li></ul>
+                  <div class="example-outcome unsafe"><span>UNSUPPORTED CLAIM</span><b>Confidence without proof</b></div>
+                </section>
+                <section class="example-side operon-side">
+                  <header><span>LOCAL MODEL + OPERON</span><b>shows its boundary</b></header>
+                  <div class="example-trace"><small>LOCAL VERIFICATION</small><code><i>claim 1 · deadline</i> → exact quote matched</code><code><i>claim 2 · extension</i> → no supporting quote</code><code><i>citation [S1]</i> → derived locally</code><code><i>unsupported claim</i> → blocked</code></div>
+                  <div class="example-response"><small>APP RESPONSE</small><blockquote>“The deadline is 30 calendar days. [S1] I can’t verify a manager extension from the available policy.”</blockquote></div>
+                  <div class="example-outcome safe"><span>SUPPORTED BOUNDARY</span><b>Exact evidence + bounded refusal</b></div>
+                </section>
+              </div>
+              <footer><b>What Operon added</b><span>Claim-level evidence</span><span>Exact quote verification</span><span>Unsupported claim blocked</span></footer>
+            </article>
+
+            <article class="example-panel" id="example-memory" role="tabpanel" aria-labelledby="tab-memory" data-example-panel="memory" hidden>
+              <header class="example-query"><div><span>IN A RIDE APP · NEW SESSION</span><p>“Use my usual pickup spot and avoid tolls.”</p></div><small>The preference was approved last week; route conditions must be fetched now.</small></header>
+              <div class="example-sides">
+                <section class="example-side model-side">
+                  <header><span>LOCAL MODEL ALONE</span><b>memory is ambiguous</b></header>
+                  <div class="example-response"><small>MODEL OUTPUT</small><blockquote>“I’ll pick you up at the main entrance and take the toll-free route.”</blockquote></div>
+                  <ul><li>“Usual” is unavailable in a fresh chat</li><li>Main entrance is a guess, not an app-approved fact</li><li>A remembered route would already be stale</li></ul>
+                  <div class="example-outcome unsafe"><span>GUESSED CONTEXT</span><b>Old and fresh facts mixed</b></div>
+                </section>
+                <section class="example-side operon-side">
+                  <header><span>LOCAL MODEL + OPERON</span><b>right lifetime</b></header>
+                  <div class="example-trace"><small>SCOPED LOOKUP</small><code><i>memory · rider:42</i> → south entrance</code><code><i>memory · preferences</i> → avoid_tolls=true</code><code><i>route.search · live</i> → current toll-free route</code><code><i>map.open</i> → receipt map_921</code></div>
+                  <div class="example-response"><small>APP RESPONSE</small><blockquote>“Using the south entrance and today’s fastest toll-free route.”</blockquote></div>
+                  <div class="example-outcome safe"><span>COMPLETED</span><b>Scoped memory + fresh skill</b></div>
+                </section>
+              </div>
+              <footer><b>What Operon added</b><span>App-approved durable memory</span><span>Scope and validity rules</span><span>Fresh host data</span></footer>
+            </article>
+
+            <article class="example-panel" id="example-graph" role="tabpanel" aria-labelledby="tab-graph" data-example-panel="graph" hidden>
+              <header class="example-query"><div><span>IN A FIELD SERVICE APP · ONE REQUEST</span><p>“Find the failed sensor, order its replacement, and add the visit to Friday’s route.”</p></div><small>Each step depends on a typed result from the step before it.</small></header>
+              <div class="example-sides">
+                <section class="example-side model-side">
+                  <header><span>LOCAL MODEL ALONE</span><b>describes a plan</b></header>
+                  <div class="example-response"><small>MODEL OUTPUT</small><blockquote>“I found the sensor, ordered the part, and added the service visit.”</blockquote></div>
+                  <ul><li>No diagnostic result identifies the failed part</li><li>The order cannot be verified or retried safely</li><li>The route step may run before inventory is confirmed</li></ul>
+                  <div class="example-outcome unsafe"><span>FALSE COMPLETION</span><b>A sentence, not a workflow</b></div>
+                </section>
+                <section class="example-side operon-side">
+                  <header><span>LOCAL MODEL + OPERON</span><b>executes the graph</b></header>
+                  <div class="example-trace"><small>TASKGRAPH RECEIPTS</small><code><i>diagnostics.lookup</i> → sensor S-14</code><code><i>inventory.search(S-14)</i> → part P-220</code><code><i>order.create(P-220)</i> → receipt ORD-88</code><code><i>route.add(ORD-88)</i> → visit FRI-07</code></div>
+                  <div class="example-response"><small>APP RESPONSE</small><blockquote>“Replacement P-220 is ordered. The service visit is on Friday’s route.”</blockquote></div>
+                  <div class="example-outcome safe"><span>COMPLETED</span><b>Dependencies satisfied + receipts</b></div>
+                </section>
+              </div>
+              <footer><b>What Operon added</b><span>Capability dependencies</span><span>Bounded replanning</span><span>Idempotent receipts</span></footer>
+            </article>
+          </div>
         </div>
       </section>
 
