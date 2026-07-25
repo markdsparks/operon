@@ -268,13 +268,42 @@ public enum OperonRunOutcome<Output: Sendable>: Sendable {
   case cancelled(OperonCancellation)
 }
 
+public struct OperonStreamCompletion: Sendable, Equatable {
+  /// The core-validated terminal status for this run.
+  public let status: OperonCoreRunStatus
+
+  /// The terminal `{"kind":"complete","result":...}` ABI envelope.
+  ///
+  /// Pass this to `OperonCoreCompletedResult(json:)` when using
+  /// `OperonCoreDriver`. Keeping the envelope beside its status lets a stream
+  /// deliver the actual answer, claims, receipts, or abstention without
+  /// coupling OperonKit back to the driver module.
+  public let json: String
+
+  public init(status: OperonCoreRunStatus, json: String) {
+    self.status = status
+    self.json = json
+  }
+}
+
 public enum OperonRunEvent: Sendable, Equatable {
   case stageStarted(OperonTraceEvent.Stage)
   case provisionalModelOutput(stage: OperonTraceEvent.Stage, text: String)
   case skillStarted(id: String)
   case skillCompleted(id: String)
   case measurement(OperonPerformanceSample)
-  case finished(OperonCoreRunStatus)
+  /// The terminal result: its status AND the envelope it concluded with.
+  ///
+  /// This previously carried only `OperonCoreRunStatus`, so a caller that
+  /// streamed a turn learned THAT it finished and never what it concluded —
+  /// no answer, no claims, no abstention reason — and had to run the entire
+  /// turn a second time to find out. Grounded turns are measured in seconds,
+  /// so that is not a viable shape for any real host.
+  ///
+  /// `OperonStreamCompletion.json` remains the portable envelope because
+  /// `OperonCoreCompletedResult` lives in OperonCoreDriver, which depends on
+  /// this module and not the reverse.
+  case finished(OperonStreamCompletion)
 }
 
 public struct OperonPerformanceSample: Sendable, Codable, Equatable {

@@ -58,7 +58,8 @@ public final class OperonCoreDriver: @unchecked Sendable {
             validateOutput: nil,
             eventSink: { continuation.yield($0) }
           )
-          continuation.yield(.finished(try result.status()))
+          continuation.yield(
+            .finished(.init(status: try result.status(), json: result.json)))
           continuation.finish()
         } catch {
           continuation.finish(throwing: error)
@@ -725,21 +726,32 @@ indirect enum JSONSchema {
   /// Citation mode has exactly one object and so never collided, which is why
   /// this survived: the mode with nested objects is the one without provider
   /// coverage.
-  func operonSchema(path: String = "OperonCoreResponse") throws -> OperonSchema {
+  func operonSchema() throws -> OperonSchema {
+    var nextObjectIndex = 0
+    return try operonSchema(nextObjectIndex: &nextObjectIndex)
+  }
+
+  private func operonSchema(nextObjectIndex: inout Int) throws -> OperonSchema {
     switch self {
     case .object(let properties):
-      return .object(
-        name: path,
-        properties: try properties.map { name, schema, optional in
+      let objectName = "OperonCoreResponseObject\(nextObjectIndex)"
+      nextObjectIndex += 1
+      var convertedProperties: [OperonSchemaProperty] = []
+      convertedProperties.reserveCapacity(properties.count)
+      for (name, schema, optional) in properties {
+        convertedProperties.append(
           .init(
             name,
-            schema: try schema.operonSchema(path: path + "_" + name),
-            isOptional: optional)
-        }
+            schema: try schema.operonSchema(nextObjectIndex: &nextObjectIndex),
+            isOptional: optional))
+      }
+      return .object(
+        name: objectName,
+        properties: convertedProperties
       )
     case .array(let items, let minimumItems, let maximumItems):
       return .array(
-        items: try items.operonSchema(path: path + "_Item"),
+        items: try items.operonSchema(nextObjectIndex: &nextObjectIndex),
         minimumItems: minimumItems,
         maximumItems: maximumItems)
     case .string: return .string()

@@ -9,8 +9,7 @@ target/
 artifacts/
 .build/
 .swiftpm/
-benchmarks/results/*.jsonl
-benchmarks/results/*.json
-benchmarks/results/matrix-*/
+benchmarks/profiles.json
+benchmarks/results/**
 sdk/javascript/pkg/
 .DS_Store

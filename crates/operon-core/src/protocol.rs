@@ -1538,7 +1538,13 @@ impl ExecutionSession {
             status: ExecutionStatus::Abstained,
             answer: String::new(),
             output: None,
-            sources: Vec::new(),
+            // Retrieved context survives an abstention. Discarding it left a
+            // host unable to distinguish "I found nothing" from "I found
+            // these and could not support a claim from them" — very
+            // different things to tell a user. The terminal result was also
+            // contradicting its own trace, which already reported the
+            // sources the ground stage returned.
+            sources: self.sources.clone(),
             confidence: 0.0,
             plan: self.plan.clone().expect("plan exists"),
             trace: std::mem::take(&mut self.trace.events),
