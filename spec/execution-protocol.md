@@ -1,6 +1,6 @@
 # Operon execution protocol
 
-Status: experimental 0.2
+Status: experimental 0.3
 
 The execution protocol separates Operon's deterministic cognitive state machine
 from platform-owned asynchronous work. The core never opens a socket, reads a
@@ -22,7 +22,8 @@ command and waits for the host SDK to resume it with the corresponding event.
 2. `start` returns either a command or a completed result.
 3. The host performs the command asynchronously.
 4. The host passes a matching event to `resume`.
-5. Steps 2–4 repeat until completion or a terminal error.
+5. Steps 2–4 repeat until a terminal completed, clarification, abstained, or
+   cancelled result, or a host error.
 
 Only one command may be outstanding for a session. Every command carries a
 monotonically increasing request ID. An event with a stale or unexpected ID is
@@ -147,9 +148,10 @@ clarification instead of a generic fallback answer.
 
 ### Command failed
 
-Returns a categorized host error for the outstanding command. Protocol 0.2
-treats this as terminal. Later versions may add policy-controlled fallback and
-retry commands.
+Returns a categorized host error for the outstanding command. A `cancelled`
+failure becomes a typed terminal cancellation result. Provider, grounding,
+memory, session, skill, timeout, and protocol failures are terminal errors.
+Later versions may add policy-controlled fallback and retry commands.
 
 ## Completion
 
@@ -164,9 +166,21 @@ A completed result contains:
 - portable trace events; and
 - ordered skill receipts with idempotency keys and published artifact IDs.
 
+In extractive grounding mode, every completed claim includes one or more
+`{source_id, quote, start_byte, end_byte}` evidence values. The core
+canonicalizes incidental source whitespace, checks each quote as an exact
+substring of that retrieved chunk, derives offsets and citations, and never
+accepts model-supplied offsets. This verifies attribution, not semantic
+entailment between a quote and an arbitrary paraphrase.
+
 It may instead contain a structured clarification with its missing fields and
 the relevant skill ID. The `require_skill_or_clarification` policy ensures an
 action-oriented session cannot return an unsupported generic answer.
+
+Validation exhaustion is a structured abstention by default and may be restored
+to legacy error behavior through policy. Extractive generation may also request
+an `unsupported_by_sources` abstention with an empty claim list. Cancellation
+is a separate successful terminal status, not a provider failure.
 
 If a `CompletionContract` is present, every required skill ID and artifact kind
 must be observed before normal completion. An unmet contract produces a typed
@@ -198,8 +212,7 @@ the session. Native SDKs should drive sessions directly.
 allocates bounded space to session context, typed durable memory, and grounding
 sources, clips only at Unicode boundaries, and reports omitted memory/source
 counts. Hosts remain responsible for obtaining authorized session and memory
-records, while the future C ABI will make this exact compiler available to each
-native SDK.
+records; native SDKs pass those records through the shared core session.
 
 ## Security boundary
 

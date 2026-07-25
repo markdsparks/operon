@@ -41,6 +41,10 @@ const result = await operon.run(
     invokeSkill: async ({ skill_id, arguments, requires_user_confirmation }) =>
       runApplicationSkill(skill_id, arguments, requires_user_confirmation),
     validateOutput: async ({ output }) => validateNearcastAnswer(output)
+  },
+  {
+    signal: abortController.signal,
+    onProgress: (event) => renderOperonProgress(event)
   }
 );
 ```
@@ -54,6 +58,12 @@ returns a string array of application validation errors. `invokeSkill` returns
 A rejected operation is
 reported to Rust as a typed `command_failed` event, never converted into an
 invented answer.
+
+Every host function receives a second context argument with the shared
+`AbortSignal` and an `onUpdate` callback. A streaming model host can publish
+cumulative provisional JSON through `onUpdate`; the driver forwards it as a
+`generation_update` progress event. Aborting returns Operon's typed terminal
+`cancelled` result and calls the WASM session's cancellation entry point.
 
 ## Checkpoint and restore
 

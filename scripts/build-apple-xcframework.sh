@@ -14,7 +14,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
+for target in \
+  aarch64-apple-ios \
+  aarch64-apple-ios-sim \
+  x86_64-apple-ios \
+  aarch64-apple-darwin \
+  x86_64-apple-darwin; do
   if ! rustup target list --installed | grep -qx "$target"; then
     echo "Missing Rust target '$target'. Install it with:" >&2
     echo "  rustup target add $target" >&2
@@ -29,13 +34,24 @@ lipo -create \
   "$ROOT_DIR/target/x86_64-apple-ios/release/liboperon_core.a" \
   -output "$SIMULATOR_LIBRARY"
 
+mkdir -p "$TEMP_DIR/macos"
+MACOS_LIBRARY="$TEMP_DIR/macos/liboperon_core.a"
+lipo -create \
+  "$ROOT_DIR/target/aarch64-apple-darwin/release/liboperon_core.a" \
+  "$ROOT_DIR/target/x86_64-apple-darwin/release/liboperon_core.a" \
+  -output "$MACOS_LIBRARY"
+
 mkdir -p "$OUTPUT_PARENT"
 xcodebuild -create-xcframework \
   -library "$ROOT_DIR/target/aarch64-apple-ios/release/liboperon_core.a" \
   -headers "$HEADER_DIR" \
   -library "$SIMULATOR_LIBRARY" \
   -headers "$HEADER_DIR" \
+  -library "$MACOS_LIBRARY" \
+  -headers "$HEADER_DIR" \
   -output "$STAGED_OUTPUT"
+
+python3 "$ROOT_DIR/scripts/canonicalize-xcframework.py" "$STAGED_OUTPUT/Info.plist"
 
 # This is a generated, Git-ignored artifact. Replace only this known output so
 # `make build-apple-xcframework` is safe to repeat during local development.

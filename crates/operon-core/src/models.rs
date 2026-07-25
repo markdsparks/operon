@@ -14,6 +14,28 @@ pub enum Strategy {
     Never,
 }
 
+/// How grounded answers prove their relationship to retrieved material.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GroundingMode {
+    /// Backward-compatible source IDs and inline `[S1]` markers.
+    #[default]
+    Citation,
+    /// Every displayable claim must carry a literal quote from a supplied source.
+    Extractive,
+}
+
+/// What a session should do after bounded answer repair is exhausted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ValidationFailureMode {
+    /// Return a terminal, successful refusal with structured validation evidence.
+    #[default]
+    Abstain,
+    /// Preserve the pre-v0.3 behavior and surface a validation error.
+    Error,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PrivacyClass {
@@ -38,6 +60,12 @@ pub struct ExecutionPolicy {
     /// an application capability. The result must be a skill action or an
     /// explicit clarification.
     pub require_skill_or_clarification: bool,
+    /// Enables deterministic quote-level provenance checks for grounded claims.
+    pub grounding_mode: GroundingMode,
+    /// Controls whether bounded validation exhaustion is a refusal or an error.
+    pub validation_failure: ValidationFailureMode,
+    /// Prevents trivial one-character quotes from satisfying extractive grounding.
+    pub min_evidence_quote_chars: usize,
 }
 
 impl Default for ExecutionPolicy {
@@ -52,6 +80,9 @@ impl Default for ExecutionPolicy {
             request_timeout_ms: 60_000,
             max_replans: 2,
             require_skill_or_clarification: false,
+            grounding_mode: GroundingMode::Citation,
+            validation_failure: ValidationFailureMode::Abstain,
+            min_evidence_quote_chars: 12,
         }
     }
 }
@@ -71,6 +102,17 @@ impl ExecutionPolicy {
         if self.request_timeout_ms == 0 {
             return Err(crate::OperonError::InvalidPolicy(
                 "request_timeout_ms must be positive".into(),
+            ));
+        }
+        if self.min_evidence_quote_chars == 0 {
+            return Err(crate::OperonError::InvalidPolicy(
+                "min_evidence_quote_chars must be positive".into(),
+            ));
+        }
+        if self.grounding_mode == GroundingMode::Extractive && self.verification == Strategy::Never
+        {
+            return Err(crate::OperonError::InvalidPolicy(
+                "extractive grounding requires verification".into(),
             ));
         }
         Ok(())
@@ -151,6 +193,50 @@ pub struct Source {
     pub path: String,
     pub text: String,
     pub score: f32,
+}
+
+/// Literal evidence selected by a model and verified by the runtime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceQuote {
+    pub source_id: String,
+    pub quote: String,
+    /// Canonical UTF-8 byte offsets, populated only after deterministic validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_byte: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_byte: Option<usize>,
+}
+
+/// One displayable assertion and the source excerpts offered in support of it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroundedClaim {
+    pub text: String,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceQuote>,
+}
+
+/// A successful refusal after Operon could not produce a valid supported answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Abstention {
+    pub reason: String,
+    #[serde(default)]
+    pub unsupported_claims: Vec<String>,
+}
+
+/// A terminal cancellation initiated by the host or caller.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Cancellation {
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionStatus {
+    #[default]
+    Completed,
+    Clarification,
+    Abstained,
+    Cancelled,
 }
 
 /// An application-declared capability that a model may request during planning.
@@ -409,6 +495,7 @@ impl ExecutionTrace {
 
 #[derive(Debug)]
 pub struct OperonResponse {
+    pub status: ExecutionStatus,
     pub answer: String,
     pub output: Option<Value>,
     pub sources: Vec<Source>,
@@ -418,4 +505,7 @@ pub struct OperonResponse {
     pub declared_source_ids: Vec<String>,
     pub was_repaired: bool,
     pub clarification: Option<Clarification>,
+    pub abstention: Option<Abstention>,
+    pub cancellation: Option<Cancellation>,
+    pub claims: Vec<GroundedClaim>,
 }

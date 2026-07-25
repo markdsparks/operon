@@ -6,7 +6,7 @@
  * functions. It is safe to run inside a Web Worker and has no Node dependency.
  */
 
-export const EXECUTION_PROTOCOL_VERSION = "0.2";
+export const EXECUTION_PROTOCOL_VERSION = "0.3";
 
 export const HostFailure = Object.freeze({
   provider: "provider",
@@ -15,8 +15,16 @@ export const HostFailure = Object.freeze({
   session: "session",
   skill: "skill",
   cancelled: "cancelled",
-  timeout: "timeout"
+  timeout: "timeout",
+  protocol: "protocol"
 });
+
+class CancelledRun extends Error {
+  constructor(reason) {
+    super(reason);
+    this.name = "AbortError";
+  }
+}
 
 function protocolError(message) {
   return new Error(`Operon protocol error: ${message}`);
@@ -73,7 +81,47 @@ function eventFor(command, value) {
  * Host methods receive the complete protocol command and must return the event
  * payload only: a GenerationResponse, Source[], MemoryRecord[], or string[].
  */
-async function driveSession(session, host, initialStep) {
+function cancellationReason(signal) {
+  if (typeof signal?.reason === "string" && signal.reason) return signal.reason;
+  if (signal?.reason instanceof Error && signal.reason.message) return signal.reason.message;
+  return "cancelled by caller";
+}
+
+async function runHostCommand(handler, command, signal, onProgress, receiver) {
+  if (signal?.aborted) throw new CancelledRun(cancellationReason(signal));
+  const context = {
+    signal,
+    onUpdate: async (update) => {
+      await onProgress?.({ kind: "generation_update", command, update });
+    }
+  };
+  const work = Promise.resolve().then(() => handler.call(receiver, command, context));
+  if (!signal) return work;
+
+  let handleAbort;
+  const aborted = new Promise((_, reject) => {
+    handleAbort = () => reject(new CancelledRun(cancellationReason(signal)));
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+  try {
+    return await Promise.race([work, aborted]);
+  } finally {
+    signal.removeEventListener("abort", handleAbort);
+  }
+}
+
+function cancelSession(session, reason) {
+  if (typeof session.cancel !== "function") {
+    throw protocolError("session does not support cancellation");
+  }
+  const step = parseStep(session.cancel(reason));
+  if (step.kind !== "complete") {
+    throw protocolError("cancelling a session did not return a terminal result");
+  }
+  return step.result;
+}
+
+async function driveSession(session, host, initialStep, options = {}) {
   if (!session || typeof session.start !== "function" || typeof session.resume !== "function") {
     throw new TypeError("session must provide start() and resume(eventJson)");
   }
@@ -81,6 +129,12 @@ async function driveSession(session, host, initialStep) {
   while (step.kind === "command") {
     const command = step.command;
     if (!command?.kind) throw protocolError("command step is missing command.kind");
+    if (options.signal?.aborted) {
+      const reason = cancellationReason(options.signal);
+      await options.onProgress?.({ kind: "cancelled", command, reason });
+      return cancelSession(session, reason);
+    }
+    await options.onProgress?.({ kind: "command_started", command });
     if (typeof host.checkpoint === "function" && typeof session.snapshot === "function") {
       await host.checkpoint({ snapshot: session.snapshot(), command });
     }
@@ -90,30 +144,35 @@ async function driveSession(session, host, initialStep) {
       switch (command.kind) {
         case "load_session":
           if (typeof host.loadSession !== "function") throw new Error("host does not implement loadSession");
-          payload = await host.loadSession(command);
+          payload = await runHostCommand(host.loadSession, command, options.signal, options.onProgress, host);
           break;
-        case "generate": payload = await host.generate(command); break;
-        case "retrieve": payload = await host.retrieve(command); break;
+        case "generate": payload = await runHostCommand(host.generate, command, options.signal, options.onProgress, host); break;
+        case "retrieve": payload = await runHostCommand(host.retrieve, command, options.signal, options.onProgress, host); break;
         case "search_memory":
           if (typeof host.searchMemory !== "function") throw new Error("host does not implement searchMemory");
-          payload = await host.searchMemory(command);
+          payload = await runHostCommand(host.searchMemory, command, options.signal, options.onProgress, host);
           break;
         case "validate_output":
           if (typeof host.validateOutput !== "function") throw new Error("host does not implement validateOutput");
-          payload = await host.validateOutput(command);
+          payload = await runHostCommand(host.validateOutput, command, options.signal, options.onProgress, host);
           break;
         case "invoke_skill":
           if (typeof host.invokeSkill !== "function") throw new Error("host does not implement invokeSkill");
-          payload = await host.invokeSkill(command);
+          payload = await runHostCommand(host.invokeSkill, command, options.signal, options.onProgress, host);
           break;
         case "prepare_skill":
           if (typeof host.prepareSkill !== "function") throw new Error("host does not implement prepareSkill");
-          payload = await host.prepareSkill(command);
+          payload = await runHostCommand(host.prepareSkill, command, options.signal, options.onProgress, host);
           break;
         default: throw protocolError(`unsupported command kind ${command.kind}`);
       }
       event = eventFor(command, payload);
     } catch (error) {
+      if (error instanceof CancelledRun || options.signal?.aborted) {
+        const reason = error instanceof Error ? error.message : cancellationReason(options.signal);
+        await options.onProgress?.({ kind: "cancelled", command, reason });
+        return cancelSession(session, reason);
+      }
       event = {
         kind: "command_failed",
         protocol_version: command.protocol_version,
@@ -122,13 +181,15 @@ async function driveSession(session, host, initialStep) {
         message: error instanceof Error ? error.message : String(error)
       };
     }
+    await options.onProgress?.({ kind: "command_completed", command, event });
     step = parseStep(session.resume(JSON.stringify(event)));
   }
+  await options.onProgress?.({ kind: "completed", result: step.result });
   return step.result;
 }
 
-export async function runSession(session, host) {
-  return driveSession(session, host, parseStep(session.start()));
+export async function runSession(session, host, options = {}) {
+  return driveSession(session, host, parseStep(session.start()), options);
 }
 
 /** Creates a session from a wasm-bindgen module generated from operon-core. */
@@ -138,16 +199,16 @@ export function createBrowserDriver(wasm) {
   }
   return {
     protocolVersion: wasm.execution_protocol_version?.() ?? EXECUTION_PROTOCOL_VERSION,
-    async run(query, config, host) {
+    async run(query, config, host, options = {}) {
       const session = new wasm.OperonWasmSession(query, JSON.stringify(config ?? {}));
       try {
-        return await runSession(session, host);
+        return await runSession(session, host, options);
       } finally {
         session.free?.();
       }
     },
     /** Restores a checkpoint and safely redelivers its outstanding command. */
-    async restore(checkpoint, host) {
+    async restore(checkpoint, host, options = {}) {
       if (!checkpoint?.snapshot || !checkpoint?.command) {
         throw new TypeError("checkpoint must contain snapshot and command");
       }
@@ -159,7 +220,7 @@ export function createBrowserDriver(wasm) {
         return await driveSession(session, host, {
           kind: "command",
           command: checkpoint.command
-        });
+        }, options);
       } finally {
         session.free?.();
       }

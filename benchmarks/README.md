@@ -1,5 +1,22 @@
 # Operon benchmark harness
 
+## GroundBench: can the evidence be checked?
+
+GroundBench is the v0.3 faithfulness suite. It separates complete supported
+answers, safe refusal on deliberately missing facts, exact quote validity,
+citation integrity, latency, and model calls across raw full context, normal
+Operon citation mode, and strict extractive Operon.
+
+```bash
+PYTHONPATH=sdk/python/src:. python3 -m benchmarks.groundbench \
+  --model qwen3:4b \
+  --repetitions 3
+```
+
+Read the [methodology and reviewed v0.3 result](GROUNDBENCH.md). Exact quotes
+prove extraction from the supplied chunk; they do not by themselves prove
+that every paraphrased claim is semantically entailed.
+
 ## AppBench: real work inside an app
 
 The document benchmark below measures grounded question answering. AppBench

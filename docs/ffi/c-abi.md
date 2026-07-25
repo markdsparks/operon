@@ -21,14 +21,16 @@ On macOS this produces `liboperon_core.dylib` and `liboperon_core.a` under
 Build a distributable Apple artifact with:
 
 ```bash
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios \
+  aarch64-apple-darwin x86_64-apple-darwin
 make build-apple-xcframework
 ```
 
 This creates `artifacts/OperonCore.xcframework` with arm64 iPhone and universal
-arm64/x86_64 Simulator static-library slices, each carrying the public header.
-The artifact is intentionally ignored by Git. A release process can sign and
-publish the resulting XCFramework without changing the C ABI.
+arm64/x86_64 Simulator and macOS static-library slices, each carrying the
+public header. `scripts/package-apple-xcframework.sh` normalizes metadata,
+creates a reproducible ZIP, and prints its SwiftPM checksum. Tagged releases
+publish that ZIP for the root package's binary target.
 
 To compile-link every packaged slice against the public C header (without
 requiring a device), run:
@@ -43,6 +45,8 @@ make verify-apple-xcframework
   `operon_session_destroy`.
 - `operon_session_start` and `operon_session_resume` allocate returned JSON and
   error strings; free each with `operon_string_free`.
+- `operon_session_cancel` produces a terminal typed cancellation result without
+  accepting another host event.
 - `operon_session_snapshot` returns versioned private state;
   `operon_session_restore` recreates a handle without replaying completed work.
 - `operon_abi_version` returns a library-owned static string that must not be
@@ -65,12 +69,13 @@ Commands, events, and completed results retain their versioned JSON protocol
 shape. The ABI only adds an outer `{kind: command|complete}` envelope.
 
 The repository includes `OperonCoreFFI` and `OperonCoreDriver`. Together they
-create this handle, execute Rust `generate` and `retrieve` commands through
-app-owned Swift providers, and resume the core with versioned event envelopes.
+create this handle, execute every current Rust host command through app-owned
+Swift providers, and resume the core with versioned event envelopes.
 An Apple host can use Apple Foundation Models for generation and its own local
 store for grounding. Typed Swift callers can return application validation
 errors through `output_validated`; Rust uses them for bounded targeted repair.
-Memory-command routing is intentionally not enabled yet.
+Session artifacts, scoped memory, skill preparation, and skill invocation are
+all routed by the Swift driver.
 The C ABI itself has no database, inference, filesystem, or network authority.
 
 ## Suspension and recovery
@@ -84,8 +89,7 @@ artifact values and require the same storage protection as application state.
 
 ## Status
 
-This is an experimental `0.2` ABI. Its handle lifecycle and JSON envelope are
-covered by Rust and Swift command-loop tests. The Swift bridge links a local
-macOS dynamic library for development and a locally generated iOS XCFramework.
-Release packaging and a cross-language replay suite remain before a stable ABI
-release.
+This is an experimental `0.3` ABI. Its handle lifecycle, cancellation, JSON
+envelope, and command loop are covered by Rust and Swift tests. Releases ship a
+checksummed XCFramework used by the root Swift package. The ABI remains alpha;
+compatibility guarantees and a native Python binding remain before stability.

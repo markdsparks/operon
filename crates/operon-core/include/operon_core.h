@@ -49,6 +49,13 @@ int32_t operon_session_resume(
     char **out_step_json,
     char **out_error);
 
+/* Cancels an active session and returns a terminal cancelled result. */
+int32_t operon_session_cancel(
+    OperonSessionHandle *handle,
+    const char *reason,
+    char **out_step_json,
+    char **out_error);
+
 /*
  * Serializes/restores versioned deterministic execution state. Snapshot JSON
  * may contain host-private artifact values and must be protected like app data.

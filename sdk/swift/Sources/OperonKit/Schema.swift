@@ -21,11 +21,13 @@ public struct OperonSchemaProperty: Sendable {
 
 public indirect enum OperonSchema: Sendable {
   case object(name: String, description: String? = nil, properties: [OperonSchemaProperty])
-  case array(items: OperonSchema)
+  case array(items: OperonSchema, minimumItems: Int? = nil, maximumItems: Int? = nil)
   case string(description: String? = nil, choices: [String]? = nil)
   case number(description: String? = nil, minimum: Double? = nil, maximum: Double? = nil)
   case integer(description: String? = nil, minimum: Int? = nil, maximum: Int? = nil)
   case boolean(description: String? = nil)
+  case reference(String)
+  case definitions(root: OperonSchema, values: [String: OperonSchema])
 }
 
 extension OperonSchema {
@@ -55,7 +57,16 @@ extension OperonSchema {
     )
   }
 
-  func validationErrors(for value: Any, path: String = "output") -> [String] {
+  public func validationErrors(for value: Any, path: String = "output") -> [String] {
+    validationErrors(for: value, path: path, definitions: [:], references: [])
+  }
+
+  private func validationErrors(
+    for value: Any,
+    path: String,
+    definitions: [String: OperonSchema],
+    references: Set<String>
+  ) -> [String] {
     switch self {
     case .object(_, _, let properties):
       guard let object = value as? [String: Any] else {
@@ -75,19 +86,29 @@ extension OperonSchema {
         }
         errors.append(
           contentsOf: property.schema.validationErrors(
-            for: child,
-            path: "\(path).\(property.name)"
+            for: child, path: "\(path).\(property.name)", definitions: definitions,
+            references: references
           )
         )
       }
       return errors
-    case .array(let items):
+    case .array(let items, let minimumItems, let maximumItems):
       guard let array = value as? [Any] else {
         return ["\(path) must be an array"]
       }
-      return array.enumerated().flatMap { index, item in
-        items.validationErrors(for: item, path: "\(path)[\(index)]")
+      var errors: [String] = []
+      if let minimumItems, array.count < minimumItems {
+        errors.append("\(path) contains fewer than minimumItems")
       }
+      if let maximumItems, array.count > maximumItems {
+        errors.append("\(path) contains more than maximumItems")
+      }
+      errors += array.enumerated().flatMap { index, item in
+        items.validationErrors(
+          for: item, path: "\(path)[\(index)]", definitions: definitions,
+          references: references)
+      }
+      return errors
     case .string(_, let choices):
       guard let string = value as? String else {
         return ["\(path) must be a string"]
@@ -117,6 +138,19 @@ extension OperonSchema {
       )
     case .boolean:
       return value is Bool ? [] : ["\(path) must be a boolean"]
+    case .reference(let name):
+      guard !references.contains(name) else {
+        return ["\(path) contains a cyclic schema reference to \(name)"]
+      }
+      guard let schema = definitions[name] else {
+        return ["\(path) references an unknown schema definition \(name)"]
+      }
+      return schema.validationErrors(
+        for: value, path: path, definitions: definitions,
+        references: references.union([name]))
+    case .definitions(let root, let values):
+      return root.validationErrors(
+        for: value, path: path, definitions: values, references: references)
     }
   }
 }

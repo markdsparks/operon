@@ -1,0 +1,72 @@
+{
+  "suite": "groundbench",
+  "suite_version": "0.1",
+  "suite_digest": "0627393a08d7347bc44564a0022eb1477d79a55f3fe108172d965344e89ade92",
+  "run_id": "2b7ce6e6-4809-4d27-896d-ac2f17f0a8b7",
+  "model": "qwen3:4b",
+  "model_quantization": "Q4_K_M",
+  "cases": 8,
+  "repetitions": 3,
+  "runs_per_configuration": 24,
+  "evaluator_version": "0.1",
+  "run_at": "2026-07-25T16:06:24Z",
+  "runtime": {
+    "provider": "Ollama local OpenAI-compatible API",
+    "python": "3.14.6",
+    "platform": "macOS-26.5.2-arm64",
+    "device_class": "Apple Silicon desktop; not an iPhone measurement"
+  },
+  "summary": {
+    "raw_full_context": {
+      "runs": 24,
+      "success_rate": 1.0,
+      "answerable_completion_rate": 0.75,
+      "safe_refusal_rate": 0.0,
+      "unsupported_answer_rate": 1.0,
+      "structured_abstention_rate": 0.0,
+      "exact_quote_rate": 0.75,
+      "attributed_claim_rate": 1.0,
+      "citation_integrity_rate": null,
+      "median_latency_ms": 1264.91,
+      "p95_latency_ms": 2706.06,
+      "average_model_calls": 1.0,
+      "repair_rate": 0.0
+    },
+    "operon_citation": {
+      "runs": 24,
+      "success_rate": 1.0,
+      "answerable_completion_rate": 0.25,
+      "safe_refusal_rate": 0.5,
+      "unsupported_answer_rate": 0.5,
+      "structured_abstention_rate": 0.3333333333333333,
+      "exact_quote_rate": null,
+      "attributed_claim_rate": null,
+      "citation_integrity_rate": 1.0,
+      "median_latency_ms": 639.94,
+      "p95_latency_ms": 7193.37,
+      "average_model_calls": 1.1666666666666667,
+      "repair_rate": 0.75
+    },
+    "operon_extractive": {
+      "runs": 24,
+      "success_rate": 1.0,
+      "answerable_completion_rate": 0.75,
+      "safe_refusal_rate": 0.4166666666666667,
+      "unsupported_answer_rate": 0.5833333333333334,
+      "structured_abstention_rate": 0.25,
+      "exact_quote_rate": 1.0,
+      "attributed_claim_rate": 1.0,
+      "citation_integrity_rate": 1.0,
+      "median_latency_ms": 1196.98,
+      "p95_latency_ms": 2963.82,
+      "average_model_calls": 1.125,
+      "repair_rate": 0.125
+    }
+  },
+  "notes": [
+    "Both the raw and Operon extractive arms received the same canonicalized evidence text.",
+    "Exact quote rate is the share of quote-bearing records where every quote was an exact substring of its supplied evidence chunk.",
+    "Exact attribution does not establish semantic entailment; the unsupported-answer rate remains an explicit roadmap target.",
+    "Latency was measured on an Apple Silicon desktop and must not be presented as on-device iPhone performance."
+  ]
+}

@@ -36,5 +36,7 @@ link_slice() {
 link_slice iphoneos arm64 ios-arm64 -miphoneos-version-min=16.0
 link_slice iphonesimulator arm64 ios-arm64_x86_64-simulator -mios-simulator-version-min=16.0
 link_slice iphonesimulator x86_64 ios-arm64_x86_64-simulator -mios-simulator-version-min=16.0
+link_slice macosx arm64 macos-arm64_x86_64 -mmacosx-version-min=13.0
+link_slice macosx x86_64 macos-arm64_x86_64 -mmacosx-version-min=13.0
 
-echo "Verified device and Simulator XCFramework slices link successfully."
+echo "Verified iOS device, iOS Simulator, and macOS XCFramework slices."

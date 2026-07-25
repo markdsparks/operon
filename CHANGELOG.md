@@ -3,6 +3,45 @@
 All notable changes to Operon are documented here. The project follows semantic
 versioning while its public APIs remain alpha.
 
+## 0.3.0 — 2026-07-25
+
+### Added
+
+- Root SwiftPM package with a reproducible, checksummed Apple XCFramework release asset.
+- Complete Swift host support for session artifacts, skill preparation/invocation,
+  streaming, cancellation, clarification, abstention, and cancellation outcomes.
+- Incremental SQLite FTS5 grounding and scoped durable memory on Apple platforms.
+- Strict extractive grounding with claim evidence, exact-substring verification,
+  derived byte offsets, canonical citations, and model-selected abstention.
+- JSON Schema `minItems`, `maxItems`, and reusable local `$defs`/`$ref` support.
+- Browser `AbortSignal`, progress, and provisional-generation callbacks.
+- GroundBench answerable/unanswerable faithfulness suite and published Qwen3 4B run.
+- Apple latency/token/thermal/low-power performance samples for real-device collection.
+
+### Changed
+
+- Execution protocol is now experimental 0.3 and snapshots are version 2.
+- Bounded validation exhaustion abstains by default; legacy error behavior is opt-in.
+- Core Apple products support iOS 16+/macOS 13+; Foundation Models remains a
+  separate iOS 26+/macOS 26+ product.
+- Extractive evidence chunks normalize incidental whitespace before prompt and verification.
+- Rust, Python, and JavaScript package versions are now 0.3.0.
+
+### Measured
+
+- In GroundBench's 24-run-per-configuration Qwen3 4B matrix, strict extractive
+  Operon made every accepted evidence quote exact (100%, versus 75% raw) and
+  completed 75% of supported-answer cases. Safe refusal was 41.7%, explicitly
+  documenting that exact attribution is not semantic entailment.
+
+### Known limitations
+
+- The public APIs, C ABI, and protocol remain alpha.
+- The first GroundBench result uses one local model on an Apple Silicon desktop,
+  not a physical iPhone.
+- Semantic claim support and safe refusal remain measured gaps after quote verification.
+- The Python SDK is still a behavioral reference rather than a Rust-core binding.
+
 ## 0.2.0 — 2026-07-23
 
 ### Added

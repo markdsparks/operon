@@ -1,0 +1,48 @@
+name: Release Apple XCFramework
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  apple-binary:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: >-
+          rustup target add
+          aarch64-apple-ios
+          aarch64-apple-ios-sim
+          x86_64-apple-ios
+          aarch64-apple-darwin
+          x86_64-apple-darwin
+      - run: scripts/build-apple-xcframework.sh
+      - run: scripts/verify-apple-xcframework.sh
+      - run: scripts/package-apple-xcframework.sh
+      - name: Verify the SwiftPM checksum committed with this release
+        run: |
+          expected="$(tr -d '[:space:]' < scripts/operon-core-release.checksum)"
+          actual="$(xcrun swift package compute-checksum artifacts/OperonCore.xcframework.zip)"
+          test "$actual" = "$expected"
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" artifacts/OperonCore.xcframework.zip --clobber
+          else
+            gh release create "$RELEASE_TAG" artifacts/OperonCore.xcframework.zip --generate-notes
+          fi

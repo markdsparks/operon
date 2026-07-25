@@ -31,7 +31,7 @@ enum FfiStep {
 /// Returns the ABI version string owned by the library. Do not free this value.
 #[unsafe(no_mangle)]
 pub extern "C" fn operon_abi_version() -> *const c_char {
-    c"0.2".as_ptr()
+    c"0.3".as_ptr()
 }
 
 /// Creates an opaque execution-session handle.
@@ -112,6 +112,34 @@ pub unsafe extern "C" fn operon_session_resume(
             .map_err(|error| error.to_string())
     }));
     unsafe { finish_step(result, out_step_json, out_error) }
+}
+
+/// Cancels an active session and returns a terminal `cancelled` result.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn operon_session_cancel(
+    handle: *mut OperonSessionHandle,
+    reason: *const c_char,
+    out_step_json: *mut *mut c_char,
+    out_error: *mut *mut c_char,
+) -> i32 {
+    unsafe { clear_out(out_step_json) };
+    unsafe { clear_out(out_error) };
+    let reason = if reason.is_null() {
+        "cancelled by host".to_owned()
+    } else {
+        match unsafe { required_string(reason, "reason") } {
+            Ok(reason) => reason,
+            Err(error) => {
+                unsafe { write_error(out_error, error) };
+                return OPERON_FFI_INVALID_ARGUMENT;
+            }
+        }
+    };
+    unsafe {
+        run_step(handle, out_step_json, out_error, |session| {
+            session.cancel(reason)
+        })
+    }
 }
 
 /// Serializes deterministic session state for suspension or crash recovery.
@@ -314,7 +342,7 @@ mod tests {
         unsafe { operon_string_free(step) };
 
         let event = CString::new(
-            r#"{"kind":"generation_completed","protocol_version":"0.2","request_id":1,"response":{"text":"{\"answer\":\"Four.\",\"confidence\":0.9,\"used_source_ids\":[]}","prompt_tokens":null,"completion_tokens":null,"finish_reason":null}}"#,
+            r#"{"kind":"generation_completed","protocol_version":"0.3","request_id":1,"response":{"text":"{\"answer\":\"Four.\",\"confidence\":0.9,\"used_source_ids\":[]}","prompt_tokens":null,"completion_tokens":null,"finish_reason":null}}"#,
         )
         .unwrap();
         let status =

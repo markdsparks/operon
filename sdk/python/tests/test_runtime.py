@@ -617,7 +617,10 @@ class OperonTests(unittest.TestCase):
             [{"answer": "Bad citation [S9].", "confidence": 0.5, "used_source_ids": ["S9"]}]
         )
         runtime = Operon(
-            provider, policy=Policy(planning="never", max_repair_attempts=0)
+            provider,
+            policy=Policy(
+                planning="never", max_repair_attempts=0, validation_failure="error"
+            ),
         )
 
         with self.assertRaises(OperonValidationError) as captured:
@@ -625,6 +628,81 @@ class OperonTests(unittest.TestCase):
 
         self.assertEqual(captured.exception.candidate["used_source_ids"], ["S9"])
         self.assertTrue(captured.exception.trace.events)
+
+    def test_validation_exhaustion_is_a_structured_abstention_by_default(self) -> None:
+        provider = ScriptedProvider(
+            [{"answer": "Bad citation [S9].", "confidence": 0.5, "used_source_ids": ["S9"]}]
+        )
+
+        response = Operon(
+            provider, policy=Policy(planning="never", max_repair_attempts=0)
+        ).run("Give me a greeting")
+
+        self.assertEqual(response.status, "abstained")
+        self.assertEqual(response.abstention.reason, "validation_exhausted")
+        self.assertTrue(response.abstention.unsupported_claims)
+
+    def test_extractive_grounding_verifies_literal_quotes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            policy_path = Path(directory) / "refunds.md"
+            policy_path.write_text(
+                "Refunds are allowed within 30 days with a receipt.", encoding="utf-8"
+            )
+            provider = ScriptedProvider(
+                [
+                    {
+                        "claims": [
+                            {
+                                "text": "Refunds are accepted within 30 days.",
+                                "evidence": [
+                                    {
+                                        "source_id": "S1",
+                                        "quote": "Refunds are allowed within 30 days",
+                                    }
+                                ],
+                            }
+                        ],
+                        "confidence": 0.95,
+                    }
+                ]
+            )
+
+            response = Operon(
+                provider,
+                grounding=LocalDocuments(policy_path),
+                policy=Policy(
+                    planning="never",
+                    grounding_mode="extractive",
+                    max_repair_attempts=0,
+                ),
+            ).run("What is the refund window?")
+
+            self.assertEqual(response.status, "completed")
+            self.assertEqual(response.answer, "Refunds are accepted within 30 days. [S1]")
+            self.assertEqual(response.claims[0].evidence[0].start_byte, 0)
+
+    def test_extractive_model_can_explicitly_abstain(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            policy_path = Path(directory) / "manual.md"
+            policy_path.write_text("Alarm E17 requires shutdown.", encoding="utf-8")
+            provider = ScriptedProvider(
+                [
+                    {
+                        "claims": [],
+                        "confidence": 0,
+                        "abstain_reason": "The source does not state an override code.",
+                    }
+                ]
+            )
+
+            response = Operon(
+                provider,
+                grounding=LocalDocuments(policy_path),
+                policy=Policy(planning="never", grounding_mode="extractive"),
+            ).run("What is the override code?")
+
+            self.assertEqual(response.status, "abstained")
+            self.assertEqual(response.abstention.reason, "unsupported_by_sources")
 
     def test_normalizes_missing_valid_citation_without_model_retry(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

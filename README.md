@@ -13,12 +13,12 @@ query → plan → ready actions → prepare → act → verify completion → r
 Operon is not an inference engine. It sits above inference engines and makes
 constrained models more useful through orchestration and explicit structure.
 
-> Status: v0.2 alpha with a portable Rust core, a dependency-free Python
-> SDK/CLI, a developer-preview Swift package for Apple platforms, and an
-> experimental browser/Web Worker WASM driver. Public contracts remain
+> Status: v0.3 alpha with a portable Rust core, Python and JavaScript hosts,
+> and a Swift package that can be added directly from GitHub on Apple
+> platforms. Public contracts remain
 > intentionally small and experimental.
 
-See the [v0.2 release notes](RELEASE_NOTES.md) and [changelog](CHANGELOG.md).
+See the [v0.3 release notes](RELEASE_NOTES.md) and [changelog](CHANGELOG.md).
 
 **AppBench evidence:** on 20 synthetic app tasks repeated three times, the same
 local Qwen3 4B model completed 90% with the original Operon harness versus 20%
@@ -28,6 +28,16 @@ all 12 dependent jobs completed with exact routing and arguments, versus 6 of
 [methodology](benchmarks/APPBENCH.md) and
 [development results](benchmarks/APPBENCH_RESULTS.md). This is engineering
 evidence, not a general model ranking.
+
+**GroundBench evidence:** on eight answerable and deliberately unanswerable
+local-knowledge cases repeated three times, Qwen3 4B with v0.3 extractive
+grounding produced exact-substring evidence on 100% of its quote-bearing
+records, versus 75% for a raw full-context prompt. Complete supported answers
+were 75% in both arms. Safe refusal was only 41.7% with strict Operon, so v0.3
+does **not** claim deterministic semantic entailment: it verifies extraction,
+and keeps unsupported-claim detection as a measured gap. Read the
+[GroundBench methodology](benchmarks/GROUNDBENCH.md) and
+[published summary](benchmarks/published/groundbench-qwen3-4b-v0.3-3x.summary.json).
 
 ## Quick start
 
@@ -76,6 +86,44 @@ print(result.sources)
 print(result.trace.events)
 ```
 
+For claims that must carry mechanically checkable evidence, enable extractive
+grounding. Operon canonicalizes each retrieved chunk, requires every claim to
+carry a quote, verifies that quote as an exact substring, derives byte offsets
+and citations, and returns a typed abstention when validation is exhausted or
+the model reports that the sources do not support an answer.
+
+```python
+from operon import Policy
+
+model = Operon.wrap(
+    provider,
+    grounding=LocalDocuments("./documents"),
+    policy=Policy(grounding_mode="extractive"),
+)
+
+result = model.run("What retention period does this policy require?")
+if result.status == "completed":
+    print(result.answer, result.claims)
+else:
+    print(result.abstention)
+```
+
+### Swift Package Manager
+
+Apple apps can consume Operon from the repository root; the Rust XCFramework
+is a checksummed GitHub release asset rather than a vendored build step.
+
+```swift
+dependencies: [
+  .package(url: "https://github.com/markdsparks/operon.git", from: "0.3.0")
+]
+```
+
+Core, driver, SQLite grounding, and memory support iOS 16+ and macOS 13+.
+`OperonFoundationModels` is a separate product that requires iOS 26+ or macOS
+26+, so older systems can use another local provider without raising the whole
+package floor. See the [Swift integration guide](sdk/swift/README.md).
+
 Applications can also require typed data alongside the readable answer:
 
 ```python
@@ -100,7 +148,8 @@ print(result.output["decision"], result.output["amount"])
 Operon validates this application output locally and includes field-level errors
 in its bounded repair loop. The supported portable schema subset covers objects,
 arrays, strings, numbers, integers, booleans, nulls, enums, numeric bounds,
-required fields, and additional-property control.
+array bounds, reusable local `$defs`/`$ref` definitions, required fields, and
+additional-property control.
 
 The default policy is local-only. Operon rejects a non-local provider URL
 unless the application explicitly opts into remote execution.
@@ -157,7 +206,7 @@ boundary and restore without replaying completed work. C and WASM entry points
 carry the same versioned state; hosts persist the outstanding command and use
 its stable idempotency key to deduplicate side effects.
 
-## What v0.2 does
+## What v0.3 does
 
 - Uses a fast path for simple requests and planning for complex ones.
 - Turns complex queries into intent, subquestions, and answer requirements.
@@ -170,9 +219,14 @@ its stable idempotency key to deduplicate side effects.
 - Refuses normal completion while an app-defined completion contract is unmet.
 - Emits replay-safe skill receipts and versioned execution snapshots.
 - Validates confidence, citations, and source identifiers.
+- Optionally verifies claim evidence as exact substrings with byte offsets.
+- Returns completed, clarification, abstained, and cancelled outcomes as data.
 - Runs a bounded, targeted repair when validation fails.
 - Repairs missing markers deterministically when every declared source is valid.
 - Returns the plan, cited sources, confidence, repair state, and execution trace.
+- Streams provisional model output while keeping only the terminal result
+  authoritative, and exposes cancellation and Apple performance samples.
+- Ships incremental SQLite FTS5 grounding and scoped durable memory for Swift.
 
 Supported grounding formats are Markdown, text, reStructuredText, JSON, YAML,
 and CSV. Binary document extraction and vector retrieval are intentionally
@@ -193,8 +247,9 @@ The workspace contains:
 
 - `crates/operon-core`: portable resumable Rust execution state machine
 - `sdk/python`: executable Python SDK, local retrieval, HTTP provider, and CLI
-- `sdk/swift`: working iOS/macOS package, Apple Foundation Models provider, and
-  grounded typed-decision demo
+- root `Package.swift`: versioned SwiftPM distribution backed by a release XCFramework
+- `sdk/swift`: Apple Foundation Models, SQLite grounding/memory, skills,
+  streaming, cancellation, and a grounded typed-decision demo
 - `sdk/javascript`: browser/Web Worker host driver for the Rust WASM session
 - `spec`: versioned command, event, output, and trace contracts
 - `conformance`: deterministic cross-SDK replay fixtures
@@ -204,12 +259,10 @@ The Rust core deliberately does not embed an inference engine or async runtime.
 Applications implement its inference and grounding traits, while native SDKs
 control scheduling and platform services.
 
-The Swift developer preview proves the native API and real on-device provider
-boundary. It currently implements the vertical-slice state transitions in pure
-Swift. `OperonCoreFFI` and `OperonCoreDriver` now drive Rust command/event
-sessions through the C ABI using app-owned Swift model and grounding providers;
-the generated XCFramework links this path for iOS development. The existing
-public `OperonKit` API remains available while that migration continues.
+`OperonCoreFFI` and `OperonCoreDriver` drive the canonical Rust command/event
+session through a release XCFramework using app-owned Swift model, grounding,
+memory, session, and skill providers. Swift concurrency owns scheduling,
+streaming, and cancellation; Rust owns portable execution semantics.
 
 The experimental C ABI is now available for native hosts. It exposes opaque
 session handles and versioned JSON commands/events while leaving inference,
@@ -224,6 +277,8 @@ The repeatable four-configuration evaluation harness is documented in
 The app-task comparison and first repeated development run are documented in
 [benchmarks/APPBENCH.md](benchmarks/APPBENCH.md) and
 [benchmarks/APPBENCH_RESULTS.md](benchmarks/APPBENCH_RESULTS.md).
+Grounded attribution and safe-refusal measurement are documented in
+[benchmarks/GROUNDBENCH.md](benchmarks/GROUNDBENCH.md).
 The first 30-case development result and its limitations are summarized in
 [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
 

@@ -6,6 +6,26 @@ use operon_core::{
     ExecutionSnapshot, ExecutionStep, MemoryScope, MemorySensitivity, SessionConfig,
     SkillDescriptor, SkillResult, Stage, Strategy,
 };
+
+#[test]
+fn host_cancellation_is_a_terminal_result_not_a_provider_error() {
+    let mut session = ExecutionSession::new("Explain this", SessionConfig::default()).unwrap();
+    let _command = session.start().unwrap();
+
+    let result = match session
+        .cancel("application entered the background")
+        .unwrap()
+    {
+        ExecutionStep::Complete(result) => result,
+        ExecutionStep::Command(_) => panic!("cancellation must be terminal"),
+    };
+
+    assert_eq!(result.status, operon_core::ExecutionStatus::Cancelled);
+    assert_eq!(
+        result.cancellation.unwrap().reason,
+        "application entered the background"
+    );
+}
 use serde::Deserialize;
 use serde_json::json;
 
@@ -49,7 +69,7 @@ fn replays_refund_grounding_repair_fixture() {
         match step {
             ExecutionStep::Command(command) => {
                 let serialized = serde_json::to_value(&command).unwrap();
-                assert_eq!(serialized["protocol_version"], "0.2");
+                assert_eq!(serialized["protocol_version"], "0.3");
                 assert!(serialized["request_id"].as_u64().unwrap() >= 1);
                 commands.push(command_label(&command));
                 let event = events.next().expect("fixture event for every command");
@@ -72,7 +92,7 @@ fn replays_refund_grounding_repair_fixture() {
     assert_eq!(result.was_repaired, fixture.expected_was_repaired);
     assert!(result.plan.needs_grounding);
     let serialized_result = serde_json::to_value(&*result).unwrap();
-    assert_eq!(serialized_result["protocol_version"], "0.2");
+    assert_eq!(serialized_result["protocol_version"], "0.3");
 }
 
 #[test]
@@ -91,7 +111,7 @@ fn rejects_an_event_for_a_different_request() {
     let _ = session.start().unwrap();
     let error = session
         .resume(ExecutionEvent::GenerationCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: 99,
             response: operon_core::GenerationResponse::text("{}"),
         })
@@ -136,7 +156,7 @@ fn application_validation_errors_trigger_a_targeted_repair() {
     };
     let validation_id = match session
         .resume(ExecutionEvent::GenerationCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: first_id,
             response: operon_core::GenerationResponse::text(
                 r#"{"answer":"Deny.","confidence":0.9,"used_source_ids":[],"output":{"decision":"deny"}}"#,
@@ -154,7 +174,7 @@ fn application_validation_errors_trigger_a_targeted_repair() {
     };
     let repair_id = match session
         .resume(ExecutionEvent::OutputValidated {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: validation_id,
             errors: vec!["decision must be partial when alcohol is present".into()],
         })
@@ -170,7 +190,7 @@ fn application_validation_errors_trigger_a_targeted_repair() {
     };
     let final_validation_id = match session
         .resume(ExecutionEvent::GenerationCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: repair_id,
             response: operon_core::GenerationResponse::text(
                 r#"{"answer":"Allow food only.","confidence":0.9,"used_source_ids":[],"output":{"decision":"partial"}}"#,
@@ -183,7 +203,7 @@ fn application_validation_errors_trigger_a_targeted_repair() {
     };
     let result = match session
         .resume(ExecutionEvent::OutputValidated {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: final_validation_id,
             errors: vec![],
         })
@@ -253,7 +273,7 @@ fn memory_scope_yields_search_before_generation_and_enters_context() {
     };
     match session
         .resume(ExecutionEvent::MemorySearchCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id,
             records: vec![memory],
         })
@@ -350,7 +370,7 @@ fn invokes_only_registered_validated_skills_and_exposes_their_result_as_context(
         _ => panic!("expected planning"),
     };
     let preparation_id = match session.resume(ExecutionEvent::GenerationCompleted {
-        protocol_version: "0.2".into(), request_id: plan_id,
+        protocol_version: "0.3".into(), request_id: plan_id,
         response: operon_core::GenerationResponse::text(r#"{"intent":"check forecast","subquestions":[],"needs_grounding":false,"answer_requirements":[],"skill_calls":[{"skill_id":"weather.lookup","arguments":{"place":"Madison"}}]}"#),
     }).unwrap() {
         ExecutionStep::Command(ExecutionCommand::PrepareSkill { request_id, skill_id, partial_arguments, .. }) => {
@@ -360,7 +380,7 @@ fn invokes_only_registered_validated_skills_and_exposes_their_result_as_context(
     };
     let skill_id = match session
         .resume(ExecutionEvent::SkillPrepared {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: preparation_id,
             outcome: operon_core::SkillPreparation::Ready {
                 arguments: json!({"place":"Madison"}),
@@ -373,7 +393,7 @@ fn invokes_only_registered_validated_skills_and_exposes_their_result_as_context(
     };
     match session
         .resume(ExecutionEvent::SkillCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: skill_id,
             result: SkillResult {
                 output: json!({"forecast":"Dry until 4pm"}),
@@ -426,7 +446,7 @@ fn invokes_only_registered_validated_skills_and_exposes_their_result_as_context(
             );
             assert!(request.messages[1].content.contains("Dry until 4pm"));
             match session.resume(ExecutionEvent::GenerationCompleted {
-                protocol_version: "0.2".into(), request_id,
+                protocol_version: "0.3".into(), request_id,
                 response: operon_core::GenerationResponse::text(r#"{"intent":"answer","subquestions":[],"needs_grounding":false,"answer_requirements":[]}"#),
             }).unwrap() {
                 ExecutionStep::Command(ExecutionCommand::Generate { stage: Stage::Generate, .. }) => {}
@@ -476,7 +496,7 @@ fn loads_typed_state_before_planning_and_returns_a_structured_clarification() {
     };
     let plan_id = match session
         .resume(ExecutionEvent::SessionLoaded {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: load_id,
             artifacts: vec![operon_core::SessionArtifact {
                 id: "window-1".into(),
@@ -505,7 +525,7 @@ fn loads_typed_state_before_planning_and_returns_a_structured_clarification() {
         _ => panic!("expected planning"),
     };
     let prepare_id = match session.resume(ExecutionEvent::GenerationCompleted {
-        protocol_version: "0.2".into(), request_id: plan_id,
+        protocol_version: "0.3".into(), request_id: plan_id,
         response: operon_core::GenerationResponse::text(r#"{"intent":"open hourly","subquestions":[],"needs_grounding":false,"answer_requirements":[],"skill_calls":[{"skill_id":"view.open_hourly","arguments":{"window_ref":"window-1"}}]}"#),
     }).unwrap() {
         ExecutionStep::Command(ExecutionCommand::PrepareSkill { request_id, artifacts, .. }) => { assert_eq!(artifacts[0].id, "window-1"); request_id }
@@ -513,7 +533,7 @@ fn loads_typed_state_before_planning_and_returns_a_structured_clarification() {
     };
     let result = match session
         .resume(ExecutionEvent::SkillPrepared {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: prepare_id,
             outcome: operon_core::SkillPreparation::NeedsInput {
                 clarification: operon_core::Clarification {
@@ -575,7 +595,7 @@ fn task_graph_completes_a_dependency_chain_and_restores_without_replaying_work()
     };
     let prepare_find_id = match session
         .resume(ExecutionEvent::GenerationCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: plan_id,
             response: operon_core::GenerationResponse::text(
                 r#"{"intent":"book time","subquestions":[],"needs_grounding":false,"answer_requirements":[],"skill_calls":[{"skill_id":"calendar.find_slots","arguments":{"day":"Friday"}}]}"#,
@@ -595,7 +615,7 @@ fn task_graph_completes_a_dependency_chain_and_restores_without_replaying_work()
     };
     let invoke_find_id = match session
         .resume(ExecutionEvent::SkillPrepared {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: prepare_find_id,
             outcome: operon_core::SkillPreparation::Ready {
                 arguments: json!({"day":"Friday"}),
@@ -620,7 +640,7 @@ fn task_graph_completes_a_dependency_chain_and_restores_without_replaying_work()
 
     let replan_id = match session
         .resume(ExecutionEvent::SkillCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: invoke_find_id,
             result: SkillResult {
                 output: json!({"found":true}),
@@ -659,7 +679,7 @@ fn task_graph_completes_a_dependency_chain_and_restores_without_replaying_work()
     };
     let prepare_create_id = match session
         .resume(ExecutionEvent::GenerationCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: replan_id,
             response: operon_core::GenerationResponse::text(
                 r#"{"intent":"create event","subquestions":[],"needs_grounding":false,"answer_requirements":[],"skill_calls":[{"skill_id":"calendar.create_event","arguments":{"slot_ref":"slot-1"}}]}"#,
@@ -681,7 +701,7 @@ fn task_graph_completes_a_dependency_chain_and_restores_without_replaying_work()
     };
     let invoke_create_id = match session
         .resume(ExecutionEvent::SkillPrepared {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: prepare_create_id,
             outcome: operon_core::SkillPreparation::Ready {
                 arguments: json!({"starts_at":"2026-07-24T10:00:00-05:00"}),
@@ -694,7 +714,7 @@ fn task_graph_completes_a_dependency_chain_and_restores_without_replaying_work()
     };
     let answer_id = match session
         .resume(ExecutionEvent::SkillCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: invoke_create_id,
             result: SkillResult {
                 output: json!({"created":true}),
@@ -713,7 +733,7 @@ fn task_graph_completes_a_dependency_chain_and_restores_without_replaying_work()
     };
     let result = match session
         .resume(ExecutionEvent::GenerationCompleted {
-            protocol_version: "0.2".into(),
+            protocol_version: "0.3".into(),
             request_id: answer_id,
             response: operon_core::GenerationResponse::text(
                 r#"{"answer":"Booked.","confidence":1.0,"used_source_ids":[]}"#,

@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://operon.dev/spec/0.2/execution-command.schema.json",
+  "$id": "https://operon.dev/spec/0.3/execution-command.schema.json",
   "title": "Operon execution command",
   "oneOf": [
     {
       "type": "object",
       "properties": {
         "kind": { "const": "load_session" },
-        "protocol_version": { "const": "0.2" },
+        "protocol_version": { "const": "0.3" },
         "request_id": { "type": "integer", "minimum": 1 },
         "session_id": { "type": "string", "minLength": 1 },
         "limit": { "type": "integer", "minimum": 1 }
@@ -19,7 +19,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "generate" },
-        "protocol_version": { "const": "0.2" },
+        "protocol_version": { "const": "0.3" },
         "request_id": { "type": "integer", "minimum": 1 },
         "stage": {
           "enum": ["classify", "replan", "ground", "generate", "validate", "repair"]
@@ -33,7 +33,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "retrieve" },
-        "protocol_version": { "const": "0.2" },
+        "protocol_version": { "const": "0.3" },
         "request_id": { "type": "integer", "minimum": 1 },
         "query": { "type": "string", "minLength": 1 },
         "limit": { "type": "integer", "minimum": 1 }
@@ -45,7 +45,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "search_memory" },
-        "protocol_version": { "const": "0.2" },
+        "protocol_version": { "const": "0.3" },
         "request_id": { "type": "integer", "minimum": 1 },
         "query": { "type": "string", "minLength": 1 },
         "scope": {
@@ -71,7 +71,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "invoke_skill" },
-        "protocol_version": { "const": "0.2" },
+        "protocol_version": { "const": "0.3" },
         "request_id": { "type": "integer", "minimum": 1 },
         "idempotency_key": { "type": "string", "minLength": 1 },
         "skill_id": { "type": "string", "minLength": 1 },
@@ -85,7 +85,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "prepare_skill" },
-        "protocol_version": { "const": "0.2" },
+        "protocol_version": { "const": "0.3" },
         "request_id": { "type": "integer", "minimum": 1 },
         "skill_id": { "type": "string", "minLength": 1 },
         "partial_arguments": { "type": "object" },
@@ -98,7 +98,7 @@
       "type": "object",
       "properties": {
         "kind": { "const": "validate_output" },
-        "protocol_version": { "const": "0.2" },
+        "protocol_version": { "const": "0.3" },
         "request_id": { "type": "integer", "minimum": 1 },
         "output": {}
       },

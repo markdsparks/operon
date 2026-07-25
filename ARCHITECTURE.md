@@ -37,9 +37,12 @@ InferenceProvider
 7. Retrieve local context using the query, intent, and subquestions.
 8. Fit skill results and ranked source chunks into the configured context budget.
 9. Generate a structured answer following the plan.
-10. Validate answer shape, confidence, provenance, and inline citations.
+10. Validate answer shape, confidence, provenance, and inline citations. In
+    extractive mode, verify every quote as an exact substring of the canonical
+    retrieved chunk and derive its byte offsets.
 11. Run a targeted repair up to the configured limit.
-12. Return the answer, a typed clarification, receipts, and an execution trace.
+12. Return a typed completed, clarification, abstained, or cancelled outcome
+    with receipts and an execution trace.
 
 ## Stable boundaries
 
@@ -77,9 +80,10 @@ They let applications maintain a current place, forecast window, selected view,
 or draft without promoting turn state into durable memory or asking the model to
 infer it from natural-language history.
 
-`Policy` holds explicit execution constraints. Platform hosts will eventually
-extend this with energy state, thermal state, foreground/background execution,
-network availability, and cloud consent.
+`Policy` holds explicit execution constraints. Swift streaming also emits
+model-call and whole-run measurement samples with latency, token counts when
+available, thermal state, and low-power state. These are measurement surfaces,
+not published iPhone performance claims; admission policy remains future work.
 
 ## Portable core
 
@@ -88,11 +92,11 @@ machine. It owns policy admission, adaptive planning, grounding orchestration,
 context budgeting, structured generation, provenance validation, bounded
 repair, and trace semantics.
 
-The dependency-free Python SDK remains the behavioral reference while the FFI
-boundary is built. The developer-preview Swift package is already executable
-against Apple Foundation Models and establishes the native app-facing API.
-Python, Swift, and Kotlin SDKs own language-native ergonomics while core
-behavior remains identical across platforms.
+The dependency-free Python SDK remains the behavioral reference. The root
+Swift package consumes a checksummed release XCFramework and drives the same
+Rust state machine while Apple Foundation Models, SQLite, permissions, and
+concurrency remain host-owned. Python, Swift, JavaScript, and future Kotlin
+SDKs own language-native ergonomics while core behavior stays portable.
 
 The canonical core is a resumable command/event state machine. It yields
 `Generate`, `Retrieve`, `SearchMemory`, `InvokeSkill`, and validation commands,
@@ -105,7 +109,7 @@ network or storage authority.
 resumable session through the existing provider traits, so command-line users
 retain a simple blocking API without creating a second execution path.
 
-The first experimental portability boundary is a narrow C ABI using opaque
+The portability boundary is a narrow, versioned C ABI using opaque
 session handles and serialized commands/events. Provider work remains host-owned
 so Operon can wrap Apple Foundation Models, llama.cpp, MLX, ExecuTorch, system
 models, and HTTP adapters without linking them into the core. See the
@@ -116,10 +120,16 @@ replaying completed work. Skill commands carry stable idempotency keys and
 completed results return receipts. Hosts protect snapshot data, persist the
 outstanding command beside it, and deduplicate side effects on redelivery.
 
-Until that ABI lands, the Swift vertical slice duplicates the minimum
-orchestration transitions needed to validate the platform design. This is a
-deliberate migration seam, not a second canonical core: the public Swift API and
-Apple provider stay in place while its internal driver moves to Rust.
+The Swift core driver implements every current host command: session loading,
+generation, grounding, memory search, application validation, skill
+preparation, and skill invocation. Unknown commands become protocol failures
+instead of crashing the host session.
+
+Strict extractive grounding verifies attribution, not semantic entailment. A
+quote must exist byte-for-byte in the canonical evidence chunk, but a finite
+deterministic checker cannot prove every paraphrased claim follows from it.
+GroundBench reports both exact-quote validity and unsupported-answer rate so
+this boundary stays visible.
 
 Deterministic application logic remains outside the model. Calculations,
 permissions, side effects, and hard business invariants are performed or

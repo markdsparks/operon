@@ -5,19 +5,20 @@ use serde_json::{Value, json};
 
 use crate::runtime::{
     ANSWER_SYSTEM_PROMPT, AnswerPayload, PLAN_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT,
-    REPLAN_SYSTEM_PROMPT, answer_schema, format_sources, is_complex, normalize_citations,
-    normalize_confidence, output_instruction, parse_model_json, plan_schema, validate_answer,
-    validate_output, validate_schema_definition, validate_schema_instance,
+    REPLAN_SYSTEM_PROMPT, answer_schema, format_sources, grounding_instruction, is_complex,
+    normalize_citations, normalize_confidence, output_instruction, parse_model_json, plan_schema,
+    validate_answer, validate_output, validate_schema_definition, validate_schema_instance,
 };
 use crate::{
-    ArtifactReference, Clarification, CompletionContract, ContextBudget, ExecutionPolicy,
-    ExecutionTrace, GenerationRequest, GenerationResponse, MemoryRecord, MemoryScope, Message,
-    OperonError, OperonResponse, OperonResult, Plan, SessionArtifact, SkillCall, SkillDescriptor,
-    SkillReceipt, SkillResult, Source, Stage, Strategy, TraceEvent, compile_context,
+    Abstention, ArtifactReference, Cancellation, Clarification, CompletionContract, ContextBudget,
+    ExecutionPolicy, ExecutionStatus, ExecutionTrace, GenerationRequest, GenerationResponse,
+    GroundedClaim, GroundingMode, MemoryRecord, MemoryScope, Message, OperonError, OperonResponse,
+    OperonResult, Plan, SessionArtifact, SkillCall, SkillDescriptor, SkillReceipt, SkillResult,
+    Source, Stage, Strategy, TraceEvent, ValidationFailureMode, compile_context,
 };
 
-pub const EXECUTION_PROTOCOL_VERSION: &str = "0.2";
-pub const EXECUTION_SNAPSHOT_VERSION: u32 = 1;
+pub const EXECUTION_PROTOCOL_VERSION: &str = "0.3";
+pub const EXECUTION_SNAPSHOT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -93,6 +94,7 @@ impl ExecutionCommand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HostFailureKind {
+    Protocol,
     Provider,
     Grounding,
     Memory,
@@ -195,6 +197,8 @@ impl ExecutionEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionResult {
     pub protocol_version: String,
+    #[serde(default)]
+    pub status: ExecutionStatus,
     pub answer: String,
     pub output: Option<Value>,
     pub sources: Vec<Source>,
@@ -205,6 +209,13 @@ pub struct ExecutionResult {
     pub was_repaired: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clarification: Option<Clarification>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abstention: Option<Abstention>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancellation: Option<Cancellation>,
+    /// Verified extractive claims. Empty in citation mode.
+    #[serde(default)]
+    pub claims: Vec<GroundedClaim>,
     /// Ordered, replay-safe evidence of every completed application action.
     #[serde(default)]
     pub skill_receipts: Vec<SkillReceipt>,
@@ -223,6 +234,7 @@ pub enum SkillPreparation {
 impl ExecutionResult {
     pub(crate) fn into_response(self) -> OperonResponse {
         OperonResponse {
+            status: self.status,
             answer: self.answer,
             output: self.output,
             sources: self.sources,
@@ -232,6 +244,9 @@ impl ExecutionResult {
             declared_source_ids: self.declared_source_ids,
             was_repaired: self.was_repaired,
             clarification: self.clarification,
+            abstention: self.abstention,
+            cancellation: self.cancellation,
+            claims: self.claims,
         }
     }
 }
@@ -562,14 +577,19 @@ impl ExecutionSession {
             failure, message, ..
         } = event
         {
+            if failure == HostFailureKind::Cancelled {
+                return Ok(self.complete_cancelled(message));
+            }
             self.pending = Pending::Complete;
             return Err(match failure {
+                HostFailureKind::Protocol => OperonError::InvalidRequest(message),
                 HostFailureKind::Grounding => OperonError::Grounding(message),
                 HostFailureKind::Memory | HostFailureKind::Session => OperonError::Memory(message),
                 HostFailureKind::Skill => OperonError::Provider(message),
-                HostFailureKind::Provider
-                | HostFailureKind::Cancelled
-                | HostFailureKind::Timeout => OperonError::Provider(message),
+                HostFailureKind::Provider | HostFailureKind::Timeout => {
+                    OperonError::Provider(message)
+                }
+                HostFailureKind::Cancelled => unreachable!("handled above"),
             });
         }
 
@@ -633,6 +653,24 @@ impl ExecutionSession {
                 "event kind does not match outstanding command".into(),
             )),
         }
+    }
+
+    /// Terminates a started session without accepting further work.
+    ///
+    /// Hosts should snapshot before calling this when the user may resume the
+    /// outstanding command later.
+    pub fn cancel(&mut self, reason: impl Into<String>) -> OperonResult<ExecutionStep> {
+        if matches!(self.pending, Pending::None) {
+            return Err(OperonError::InvalidRequest(
+                "execution session has not started".into(),
+            ));
+        }
+        if matches!(self.pending, Pending::Complete) {
+            return Err(OperonError::InvalidRequest(
+                "execution session is already complete".into(),
+            ));
+        }
+        Ok(self.complete_cancelled(reason.into()))
     }
 
     fn plan_command(&mut self) -> ExecutionStep {
@@ -1177,6 +1215,11 @@ impl ExecutionSession {
     fn normalize_source_ids(&mut self) {
         for (index, source) in self.sources.iter_mut().enumerate() {
             source.id = format!("S{}", index + 1);
+            if self.config.policy.grounding_mode == GroundingMode::Extractive {
+                // Evidence is verified against this canonical retrieved chunk, not
+                // against incidental Markdown line wrapping in the original file.
+                source.text = source.text.split_whitespace().collect::<Vec<_>>().join(" ");
+            }
         }
     }
 
@@ -1199,7 +1242,7 @@ impl ExecutionSession {
                 messages: vec![
                     Message::system(ANSWER_SYSTEM_PROMPT),
                     Message::user(format!(
-                        "QUERY:\n{}\n\nPLAN:\n{plan_json}\n\nLOCAL MEMORY:\n{}\n\nLOCAL SOURCES:\n{}{}",
+                        "QUERY:\n{}\n\nPLAN:\n{plan_json}\n\nLOCAL MEMORY:\n{}\n\nLOCAL SOURCES:\n{}{}{}",
                         self.query,
                         if context.memory.is_empty() {
                             "(none)"
@@ -1211,10 +1254,14 @@ impl ExecutionSession {
                         } else {
                             &context.sources
                         },
+                        grounding_instruction(self.config.policy.grounding_mode),
                         output_instruction(self.config.output_schema.as_ref())
                     )),
                 ],
-                schema: Some(answer_schema(self.config.output_schema.as_ref())),
+                schema: Some(answer_schema(
+                    self.config.output_schema.as_ref(),
+                    self.config.policy.grounding_mode,
+                )),
                 temperature: 0.1,
                 max_tokens: None,
                 reasoning_effort: Some("none".into()),
@@ -1238,16 +1285,30 @@ impl ExecutionSession {
                 );
                 Ok(self.repair_command(json!({ "raw_output": response.text }), vec![error]))
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                self.validation_failure_step("invalid_model_output", vec![error.to_string()])
+            }
         }
     }
 
     fn accept_repair(&mut self, response: GenerationResponse) -> OperonResult<ExecutionStep> {
-        let payload: AnswerPayload = parse_model_json(&response.text)?;
-        self.validate_or_repair(payload)
+        match parse_model_json(&response.text) {
+            Ok(payload) => self.validate_or_repair(payload),
+            Err(error) => {
+                self.validation_failure_step("invalid_model_output", vec![error.to_string()])
+            }
+        }
     }
 
     fn validate_or_repair(&mut self, mut payload: AnswerPayload) -> OperonResult<ExecutionStep> {
+        if self.config.policy.grounding_mode == GroundingMode::Extractive
+            && !payload.abstain_reason.trim().is_empty()
+        {
+            return Ok(self.complete_abstention(
+                "unsupported_by_sources",
+                vec![payload.abstain_reason.trim().to_owned()],
+            ));
+        }
         if normalize_confidence(&mut payload) {
             self.was_repaired = true;
             self.trace.add(
@@ -1264,17 +1325,18 @@ impl ExecutionSession {
                 json!({ "errors": errors }),
             );
             if !errors.is_empty() {
-                return Err(OperonError::Validation(errors));
+                return self.validation_failure_step("validation_exhausted", errors);
             }
             return self.validate_with_host_or_complete(payload);
         }
 
         let plan = self.plan.as_ref().expect("plan exists");
         let mut errors = validate_answer(
-            &payload,
+            &mut payload,
             plan,
             &self.sources,
             self.config.output_schema.as_ref(),
+            &self.config.policy,
         );
         self.trace.add(
             Stage::Validate,
@@ -1289,10 +1351,11 @@ impl ExecutionSession {
                 json!({}),
             );
             errors = validate_answer(
-                &payload,
+                &mut payload,
                 plan,
                 &self.sources,
                 self.config.output_schema.as_ref(),
+                &self.config.policy,
             );
             self.trace.add(
                 Stage::Validate,
@@ -1304,7 +1367,7 @@ impl ExecutionSession {
             return self.validate_with_host_or_complete(payload);
         }
         if self.repair_attempts >= self.config.policy.max_repair_attempts {
-            return Err(OperonError::Validation(errors));
+            return self.validation_failure_step("validation_exhausted", errors);
         }
         let candidate = serde_json::to_value(&payload)
             .map_err(|error| OperonError::InvalidModelOutput(error.to_string()))?;
@@ -1349,7 +1412,7 @@ impl ExecutionSession {
             return Ok(self.complete(payload));
         }
         if self.repair_attempts >= self.config.policy.max_repair_attempts {
-            return Err(OperonError::Validation(errors));
+            return self.validation_failure_step("application_validation_exhausted", errors);
         }
         let candidate = serde_json::to_value(&payload)
             .map_err(|error| OperonError::InvalidModelOutput(error.to_string()))?;
@@ -1376,19 +1439,34 @@ impl ExecutionSession {
                 messages: vec![
                     Message::system(REPAIR_SYSTEM_PROMPT),
                     Message::user(format!(
-                        "QUERY:\n{}\n\nPLAN:\n{plan_json}\n\nSOURCES:\n{}\n\nCANDIDATE:\n{candidate}\n\nVALIDATION ERRORS:\n{error_text}{}",
+                        "QUERY:\n{}\n\nPLAN:\n{plan_json}\n\nSOURCES:\n{}\n\nCANDIDATE:\n{candidate}\n\nVALIDATION ERRORS:\n{error_text}{}{}",
                         self.query,
                         format_sources(&self.sources, self.config.policy.max_context_chars),
+                        grounding_instruction(self.config.policy.grounding_mode),
                         output_instruction(self.config.output_schema.as_ref())
                     )),
                 ],
-                schema: Some(answer_schema(self.config.output_schema.as_ref())),
+                schema: Some(answer_schema(
+                    self.config.output_schema.as_ref(),
+                    self.config.policy.grounding_mode,
+                )),
                 temperature: 0.0,
                 max_tokens: None,
                 reasoning_effort: Some("none".into()),
                 timeout_ms: self.config.policy.request_timeout_ms,
             },
         })
+    }
+
+    fn validation_failure_step(
+        &mut self,
+        reason: &str,
+        errors: Vec<String>,
+    ) -> OperonResult<ExecutionStep> {
+        if self.config.policy.validation_failure == ValidationFailureMode::Error {
+            return Err(OperonError::Validation(errors));
+        }
+        Ok(self.complete_abstention(reason, errors))
     }
 
     fn complete(&mut self, payload: AnswerPayload) -> ExecutionStep {
@@ -1403,6 +1481,7 @@ impl ExecutionSession {
         self.pending = Pending::Complete;
         ExecutionStep::Complete(Box::new(ExecutionResult {
             protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+            status: ExecutionStatus::Completed,
             answer: payload.answer.trim().to_owned(),
             output: payload.output,
             sources,
@@ -1412,6 +1491,9 @@ impl ExecutionSession {
             declared_source_ids,
             was_repaired: self.was_repaired,
             clarification: None,
+            abstention: None,
+            cancellation: None,
+            claims: payload.claims,
             skill_receipts: self.skill_receipts.clone(),
         }))
     }
@@ -1427,6 +1509,7 @@ impl ExecutionSession {
         self.pending = Pending::Complete;
         ExecutionStep::Complete(Box::new(ExecutionResult {
             protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+            status: ExecutionStatus::Clarification,
             answer: clarification.prompt.clone(),
             output: None,
             sources: Vec::new(),
@@ -1436,6 +1519,71 @@ impl ExecutionSession {
             declared_source_ids: Vec::new(),
             was_repaired: false,
             clarification: Some(clarification),
+            abstention: None,
+            cancellation: None,
+            claims: Vec::new(),
+            skill_receipts: self.skill_receipts.clone(),
+        }))
+    }
+
+    fn complete_abstention(&mut self, reason: &str, errors: Vec<String>) -> ExecutionStep {
+        self.trace.add(
+            Stage::Validate,
+            "completed with a structured abstention",
+            json!({ "reason": reason, "unsupported_claims": errors }),
+        );
+        self.pending = Pending::Complete;
+        ExecutionStep::Complete(Box::new(ExecutionResult {
+            protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+            status: ExecutionStatus::Abstained,
+            answer: String::new(),
+            output: None,
+            sources: Vec::new(),
+            confidence: 0.0,
+            plan: self.plan.clone().expect("plan exists"),
+            trace: std::mem::take(&mut self.trace.events),
+            declared_source_ids: Vec::new(),
+            was_repaired: self.was_repaired,
+            clarification: None,
+            abstention: Some(Abstention {
+                reason: reason.into(),
+                unsupported_claims: errors,
+            }),
+            cancellation: None,
+            claims: Vec::new(),
+            skill_receipts: self.skill_receipts.clone(),
+        }))
+    }
+
+    fn complete_cancelled(&mut self, reason: String) -> ExecutionStep {
+        self.trace.add(
+            Stage::Validate,
+            "execution cancelled by the host",
+            json!({ "reason": reason }),
+        );
+        self.pending = Pending::Complete;
+        ExecutionStep::Complete(Box::new(ExecutionResult {
+            protocol_version: EXECUTION_PROTOCOL_VERSION.into(),
+            status: ExecutionStatus::Cancelled,
+            answer: String::new(),
+            output: None,
+            sources: Vec::new(),
+            confidence: 0.0,
+            plan: self.plan.clone().unwrap_or_else(|| Plan {
+                intent: "cancelled".into(),
+                subquestions: Vec::new(),
+                needs_grounding: false,
+                answer_requirements: Vec::new(),
+                skill_calls: Vec::new(),
+                clarification: None,
+            }),
+            trace: std::mem::take(&mut self.trace.events),
+            declared_source_ids: Vec::new(),
+            was_repaired: self.was_repaired,
+            clarification: None,
+            abstention: None,
+            cancellation: Some(Cancellation { reason }),
+            claims: Vec::new(),
             skill_receipts: self.skill_receipts.clone(),
         }))
     }

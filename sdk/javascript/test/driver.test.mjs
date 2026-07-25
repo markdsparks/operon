@@ -8,11 +8,17 @@ class ScriptedSession {
   start() { return JSON.stringify(this.steps.shift()); }
   resume(event) { this.events.push(JSON.parse(event)); return JSON.stringify(this.steps.shift()); }
   snapshot() { return JSON.stringify({ snapshot_version: 1 }); }
+  cancel(reason) {
+    return JSON.stringify({
+      kind: "complete",
+      result: { status: "cancelled", cancellation: { reason } }
+    });
+  }
 }
 
 const generate = {
   kind: "command",
-  command: { kind: "generate", protocol_version: "0.2", request_id: 1, stage: "answer", request: { messages: [] } }
+  command: { kind: "generate", protocol_version: "0.3", request_id: 1, stage: "answer", request: { messages: [] } }
 };
 
 test("dispatches generation and returns the completed Rust result", async () => {
@@ -33,8 +39,37 @@ test("returns a typed command failure when a host command rejects", async () => 
   const session = new ScriptedSession([generate, { kind: "complete", result: { answer: "" } }]);
   await runSession(session, { generate: async () => { throw new Error("WebLLM worker unavailable"); } });
   assert.deepEqual(session.events[0], {
-    kind: "command_failed", protocol_version: "0.2", request_id: 1,
+    kind: "command_failed", protocol_version: "0.3", request_id: 1,
     failure: "provider", message: "WebLLM worker unavailable"
+  });
+});
+
+test("streams provisional generation updates and progress events", async () => {
+  const session = new ScriptedSession([generate, { kind: "complete", result: { status: "completed", answer: "Final" } }]);
+  const progress = [];
+  const result = await runSession(session, {
+    generate: async (_command, context) => {
+      await context.onUpdate({ text: "Provisional" });
+      return { text: "{\"answer\":\"Final\"}" };
+    }
+  }, { onProgress: async (event) => progress.push(event.kind) });
+  assert.equal(result.answer, "Final");
+  assert.deepEqual(progress, [
+    "command_started", "generation_update", "command_completed", "completed"
+  ]);
+});
+
+test("turns AbortSignal cancellation into a terminal Operon result", async () => {
+  const session = new ScriptedSession([generate]);
+  const controller = new AbortController();
+  const result = await runSession(session, {
+    generate: async () => {
+      queueMicrotask(() => controller.abort("app backgrounded"));
+      return new Promise(() => {});
+    }
+  }, { signal: controller.signal });
+  assert.deepEqual(result, {
+    status: "cancelled", cancellation: { reason: "app backgrounded" }
   });
 });
 
@@ -42,7 +77,7 @@ test("dispatches an app-owned skill and preserves its typed result", async () =>
   const invokeSkill = {
     kind: "command",
     command: {
-      kind: "invoke_skill", protocol_version: "0.2", request_id: 4,
+      kind: "invoke_skill", protocol_version: "0.3", request_id: 4,
       idempotency_key: "operon:skill:calendar.availability:request:4",
       skill_id: "calendar.availability", arguments: { day: "Friday" },
       requires_user_confirmation: true
@@ -57,14 +92,14 @@ test("dispatches an app-owned skill and preserves its typed result", async () =>
     }
   });
   assert.deepEqual(session.events[0], {
-    kind: "skill_completed", protocol_version: "0.2", request_id: 4,
+    kind: "skill_completed", protocol_version: "0.3", request_id: 4,
     result: { output: { open: true }, sources: [] }
   });
 });
 
 test("loads typed session state and prepares a partial skill call", async () => {
-  const load = { kind: "command", command: { kind: "load_session", protocol_version: "0.2", request_id: 1, session_id: "turn-7", limit: 8 } };
-  const prepare = { kind: "command", command: { kind: "prepare_skill", protocol_version: "0.2", request_id: 2, skill_id: "forecast.hourly", partial_arguments: { window_ref: "last_result" }, artifacts: [{ id: "A1", kind: "forecast-window", summary: "Nokomis tomorrow evening" }] } };
+  const load = { kind: "command", command: { kind: "load_session", protocol_version: "0.3", request_id: 1, session_id: "turn-7", limit: 8 } };
+  const prepare = { kind: "command", command: { kind: "prepare_skill", protocol_version: "0.3", request_id: 2, skill_id: "forecast.hourly", partial_arguments: { window_ref: "last_result" }, artifacts: [{ id: "A1", kind: "forecast-window", summary: "Nokomis tomorrow evening" }] } };
   const session = new ScriptedSession([load, prepare, { kind: "complete", result: { clarification: null } }]);
   await runSession(session, {
     loadSession: async () => [{ id: "A1", kind: "forecast-window", summary: "Nokomis tomorrow evening", value: { place: "Nokomis" } }],
@@ -80,7 +115,7 @@ test("loads typed session state and prepares a partial skill call", async () => 
 test("creates and frees a wasm-bindgen session", async () => {
   let freed = false;
   const wasm = {
-    execution_protocol_version: () => "0.2",
+    execution_protocol_version: () => "0.3",
     OperonWasmSession: class extends ScriptedSession {
       constructor(query, config) {
         assert.equal(query, "Will the hike work?");
@@ -111,7 +146,7 @@ test("checkpoints and restores an outstanding command", async () => {
     }
   }
   const driver = createBrowserDriver({
-    execution_protocol_version: () => "0.2",
+    execution_protocol_version: () => "0.3",
     OperonWasmSession: RestorableSession
   });
   await driver.run("Recover this", {}, {

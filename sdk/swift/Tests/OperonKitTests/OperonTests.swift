@@ -4,6 +4,7 @@ import Testing
 @testable import OperonCoreDriver
 @testable import OperonCoreFFI
 @testable import OperonKit
+@testable import OperonSQLite
 
 private struct Decision: Codable, Sendable, Equatable {
   let decision: String
@@ -45,6 +46,33 @@ private actor RecordingGrounding: OperonGroundingProvider {
         text: "The allowed amount is $68."
       )
     ]
+  }
+}
+
+private actor RecordingSkillHost: OperonSkillHost {
+  nonisolated let descriptors = [
+    OperonSkillDescriptor(
+      id: "calendar.create",
+      description: "Create a calendar event",
+      inputSchema: .object(
+        name: "CreateEventInput",
+        properties: [.init("title", schema: .string())]),
+      outputSchema: .object(
+        name: "CreateEventOutput",
+        properties: [.init("event_id", schema: .string())])
+    )
+  ]
+  private(set) var invocations = 0
+
+  func prepare(_ request: OperonSkillPreparationRequest) async throws
+    -> OperonSkillPreparation
+  {
+    .ready(arguments: request.partialArguments)
+  }
+
+  func invoke(_ request: OperonSkillInvocationRequest) async throws -> OperonSkillResult {
+    invocations += 1
+    return OperonSkillResult(output: .object(["event_id": .string("event-1")]))
   }
 }
 
@@ -133,7 +161,7 @@ func applicationValidatorTriggersTargetedRepair() async throws {
 #if os(macOS)
   @Test
   func rustCoreFFIDrivesACommandEventSession() throws {
-    #expect(OperonCoreSession.abiVersion == "0.2")
+    #expect(OperonCoreSession.abiVersion == "0.3")
 
     let session = try OperonCoreSession(
       query: "What is two plus two?",
@@ -148,12 +176,12 @@ func applicationValidatorTriggersTargetedRepair() async throws {
     #expect(commandJSON.contains("\"generate\""))
 
     let snapshotJSON = try session.snapshotJSON()
-    #expect(snapshotJSON.contains("\"snapshot_version\":1"))
+    #expect(snapshotJSON.contains("\"snapshot_version\":2"))
     session.close()
     let restored = try OperonCoreSession(snapshotJSON: snapshotJSON)
 
     let event =
-      #"{"kind":"generation_completed","protocol_version":"0.2","request_id":1,"response":{"text":"{\"answer\":\"Four.\",\"confidence\":0.95,\"used_source_ids\":[]}","prompt_tokens":null,"completion_tokens":null,"finish_reason":null}}"#
+      #"{"kind":"generation_completed","protocol_version":"0.3","request_id":1,"response":{"text":"{\"answer\":\"Four.\",\"confidence\":0.95,\"used_source_ids\":[]}","prompt_tokens":null,"completion_tokens":null,"finish_reason":null}}"#
     let completed = try restored.resume(eventJSON: event)
     guard case .complete(let resultJSON) = completed else {
       Issue.record("The completed generation must terminate the core session.")
@@ -161,7 +189,77 @@ func applicationValidatorTriggersTargetedRepair() async throws {
     }
     #expect(resultJSON.contains("Four."))
   }
+
+  @Test
+  func rustCoreCancellationReturnsATerminalOutcome() throws {
+    let session = try OperonCoreSession(
+      query: "Explain this",
+      configJSON: #"{"policy":{"planning":"never"}}"#)
+    _ = try session.start()
+
+    let cancelled = try session.cancel(reason: "application backgrounded")
+
+    guard case .complete(let resultJSON) = cancelled else {
+      Issue.record("Cancellation must complete the session.")
+      return
+    }
+    #expect(resultJSON.contains("\"status\":\"cancelled\""))
+    #expect(resultJSON.contains("application backgrounded"))
+  }
 #endif
+
+@Test
+func sqliteGroundingIndexesIncrementallyAndSearchesLocally() async throws {
+  let directory = FileManager.default.temporaryDirectory
+    .appendingPathComponent("operon-sqlite-grounding-\(UUID().uuidString)")
+  defer { try? FileManager.default.removeItem(at: directory) }
+  let provider = try SQLiteOperonGroundingProvider(
+    url: directory.appendingPathComponent("grounding.sqlite"))
+  let documents = [
+    OperonDocument(id: "refunds", path: "refunds.md", text: "Refunds are allowed for 30 days."),
+    OperonDocument(id: "shipping", path: "shipping.md", text: "Express shipping takes one day."),
+  ]
+
+  #expect(try await provider.index(documents) == 2)
+  #expect(try await provider.index(documents) == 0)
+  let sources = try await provider.search("refund window", limit: 3)
+  #expect(sources.first?.id == "refunds")
+}
+
+@Test
+func sqliteMemoryFiltersScopeBeforeFTSRanking() async throws {
+  let directory = FileManager.default.temporaryDirectory
+    .appendingPathComponent("operon-sqlite-memory-\(UUID().uuidString)")
+  defer { try? FileManager.default.removeItem(at: directory) }
+  let memory = try SQLiteOperonMemoryStore(
+    url: directory.appendingPathComponent("memory.sqlite"))
+  let allowed = OperonMemoryRecord(
+    namespace: "customer-42",
+    kind: .preference,
+    content: "Customer prefers concise weather summaries.",
+    authority: .userConfirmed)
+  let isolated = OperonMemoryRecord(
+    namespace: "customer-99",
+    kind: .preference,
+    content: "Customer prefers concise weather summaries.",
+    authority: .userConfirmed)
+  _ = try await memory.put(allowed)
+  _ = try await memory.put(isolated)
+
+  let results = try await memory.search(
+    "concise weather",
+    scope: OperonMemoryScope(namespace: "customer-42"),
+    limit: 5)
+
+  #expect(results.map(\.id) == [allowed.id])
+  #expect(try await memory.tombstone(allowed.id))
+  let exported = try await memory.export(scope: OperonMemoryScope(namespace: "customer-42"))
+  #expect(exported.first?.status == .tombstoned)
+  #expect(
+    try await memory.search(
+      "concise weather", scope: OperonMemoryScope(namespace: "customer-42"), limit: 5
+    ).isEmpty)
+}
 
 #if os(macOS)
   @Test
@@ -193,7 +291,7 @@ func applicationValidatorTriggersTargetedRepair() async throws {
       policy: OperonPolicy(planning: .never, maximumRepairAttempts: 1)
     )
 
-    let result: OperonResult<Decision> = try await driver.run(
+    let outcome: OperonRunOutcome<Decision> = try await driver.run(
       "Determine the allowed amount.",
       outputSchema: decisionSchema,
       validateOutput: { decision in
@@ -201,9 +299,60 @@ func applicationValidatorTriggersTargetedRepair() async throws {
       }
     )
 
+    guard case .completed(let result) = outcome else {
+      Issue.record("The repaired answer should complete.")
+      return
+    }
+
     #expect(result.output == Decision(decision: "partial", amount: 68))
     #expect(result.wasRepaired)
     #expect(await provider.requestCount == 2)
+  }
+#endif
+
+#if os(macOS)
+  @Test
+  func rustCoreDriverExecutesRegisteredSkillsAndReturnsReceipts() async throws {
+    let provider = ScriptedProvider([
+      #"{"intent":"Create lunch","subquestions":[],"needs_grounding":false,"answer_requirements":[],"skill_calls":[{"skill_id":"calendar.create","arguments":{"title":"Lunch"}}]}"#,
+      #"{"answer":"Created lunch.","confidence":0.95,"used_source_ids":[]}"#,
+    ])
+    let skills = RecordingSkillHost()
+    let driver = OperonCoreDriver(
+      model: provider,
+      policy: OperonPolicy(planning: .always),
+      skillHost: skills,
+      completion: OperonCompletionContract(requiredSkillIDs: ["calendar.create"])
+    )
+
+    let result = try await driver.run("Create a lunch event")
+
+    #expect(result.json.contains("\"skill_id\":\"calendar.create\""))
+    #expect(await skills.invocations == 1)
+  }
+
+  @Test
+  func rustCoreDriverStreamsOnlyProvisionalModelOutputBeforeCompletion() async throws {
+    let provider = ScriptedProvider([
+      #"{"answer":"Four.","confidence":0.95,"used_source_ids":[]}"#
+    ])
+    let driver = OperonCoreDriver(
+      model: provider,
+      policy: OperonPolicy(planning: .never)
+    )
+    var sawProvisional = false
+    var sawMeasurement = false
+    var finalStatus: OperonCoreRunStatus?
+
+    for try await event in driver.stream("What is two plus two?") {
+      if case .provisionalModelOutput = event { sawProvisional = true }
+      if case .measurement = event { sawMeasurement = true }
+      if case .finished(let status) = event { finalStatus = status }
+    }
+
+    #expect(sawProvisional)
+    #expect(sawMeasurement)
+    #expect(finalStatus == .completed)
   }
 #endif
 

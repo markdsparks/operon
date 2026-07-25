@@ -55,6 +55,10 @@ private struct ExpenseDecisionGrounding: OperonGroundingProvider {
 @main
 private enum OperonExpenseDemo {
   static func main() async {
+    guard #available(iOS 26.0, macOS 26.0, *) else {
+      print("OperonExpenseDemo requires Apple Foundation Models on iOS or macOS 26+.")
+      return
+    }
     let provider = AppleFoundationModelsProvider()
     let expense = Expense(foodSubtotal: 68, alcoholSubtotal: 20)
     let operon = OperonCoreDriver(
@@ -86,7 +90,7 @@ private enum OperonExpenseDemo {
     )
 
     do {
-      let result: OperonResult<ExpenseDecision> = try await operon.run(
+      let outcome: OperonRunOutcome<ExpenseDecision> = try await operon.run(
         "An individual dinner has $68 of food and a separate $20 alcoholic drink. The receipt is itemized. Determine exactly how much is reimbursable.",
         outputSchema: schema,
         validateOutput: { decision in
@@ -105,6 +109,10 @@ private enum OperonExpenseDemo {
           return errors
         }
       )
+      guard case .completed(let result) = outcome else {
+        print("OperonExpenseDemo: Operon did not return a completed decision.")
+        return
+      }
       print(result.answer)
       print("decision=\(result.output.decision)")
       print("reimbursable_amount_usd=\(result.output.reimbursableAmountUSD)")

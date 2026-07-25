@@ -19,6 +19,15 @@ from benchmarks.appbench import (
     suite_digest as app_suite_digest,
     summarize as summarize_appbench,
 )
+from benchmarks.groundbench import (
+    GroundCase,
+    GroundRecord,
+    load_suite as load_ground_suite,
+    score_case as score_ground_case,
+    summarize as summarize_groundbench,
+    suite_digest as ground_suite_digest,
+    verify_quotes,
+)
 from benchmarks.matrix import aggregate_matrix, model_slug
 from benchmarks.run import (
     PROTOCOL_VERSION,
@@ -32,6 +41,60 @@ from benchmarks.run import (
 
 
 class BenchmarkTests(unittest.TestCase):
+    def test_groundbench_covers_answerable_and_unanswerable_evidence(self) -> None:
+        suite, cases = load_ground_suite(Path("benchmarks/ground_cases.json"))
+
+        self.assertEqual(suite["version"], "0.1")
+        self.assertGreaterEqual(len(cases), 8)
+        self.assertEqual({case.supported for case in cases}, {True, False})
+        self.assertEqual(len(ground_suite_digest(suite)), 64)
+
+    def test_groundbench_detects_a_fabricated_quote(self) -> None:
+        claims = [
+            {
+                "text": "Backups are retained for 30 days.",
+                "evidence": [{"source_id": "S1", "quote": "Backups are retained for 30 days."}],
+            }
+        ]
+
+        count, valid, attributed = verify_quotes(
+            claims, {"S1": "Operational logs are retained for 30 days."}
+        )
+
+        self.assertEqual(count, 1)
+        self.assertFalse(valid)
+        self.assertTrue(attributed)
+
+    def test_groundbench_scores_structured_abstention_as_safe(self) -> None:
+        case = GroundCase(
+            id="missing", title="Missing", supported=False, query="What code?",
+            documents=(), required_any=(("not specified",),), forbidden_any=(),
+        )
+
+        correct, safe, unsupported = score_ground_case(case, "abstained", "")
+
+        self.assertTrue(correct)
+        self.assertTrue(safe)
+        self.assertFalse(unsupported)
+
+    def test_groundbench_summary_exposes_unsupported_answer_rate(self) -> None:
+        base = {
+            "timestamp": "now", "run_id": "run", "suite_digest": "digest",
+            "model": "model", "configuration": "operon_extractive", "repetition": 1,
+            "case_id": "case", "case_title": "Case", "supported": False,
+            "success": True, "status": "abstained", "answer": "", "correct": True,
+            "safe_handling": True, "unsupported_answer": False, "quote_count": 0,
+            "quote_valid": None, "claims_attributed": None, "citation_integrity": None,
+            "was_repaired": True, "duration_ms": 10, "model_calls": 2,
+            "prompt_tokens": 10, "completion_tokens": 5, "model_outputs": [],
+        }
+
+        result = summarize_groundbench([GroundRecord(**base)])["operon_extractive"]
+
+        self.assertEqual(result["safe_refusal_rate"], 1)
+        self.assertEqual(result["unsupported_answer_rate"], 0)
+        self.assertEqual(result["structured_abstention_rate"], 1)
+
     def test_appbench_corpus_is_versioned_and_covers_app_behavior_categories(self) -> None:
         suite = load_app_suite(Path("benchmarks/app_cases.json"))
 

@@ -1,4 +1,4 @@
-.PHONY: check check-apple test test-python test-rust test-javascript test-wasm test-swift build-c-abi build-apple-xcframework verify-apple-xcframework build-swift-ios lint-rust lint-swift
+.PHONY: check check-apple test test-python test-rust test-javascript test-wasm test-swift build-c-abi build-apple-xcframework package-apple-xcframework verify-apple-xcframework build-swift-ios lint-rust lint-swift
 
 check: test lint-rust
 
@@ -23,6 +23,9 @@ build-c-abi:
 
 build-apple-xcframework:
 	scripts/build-apple-xcframework.sh
+
+package-apple-xcframework:
+	scripts/package-apple-xcframework.sh
 
 verify-apple-xcframework:
 	scripts/verify-apple-xcframework.sh

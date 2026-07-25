@@ -10,46 +10,39 @@ let package = Package(
   ],
   products: [
     .library(name: "OperonKit", targets: ["OperonKit"]),
-    // Development manifest. The root package uses the release asset URL.
     .library(name: "OperonCoreFFI", targets: ["OperonCoreFFI"]),
     .library(name: "OperonCoreDriver", targets: ["OperonCoreDriver"]),
-    .library(
-      name: "OperonFoundationModels",
-      targets: ["OperonFoundationModels"]
-    ),
+    .library(name: "OperonFoundationModels", targets: ["OperonFoundationModels"]),
     .library(name: "OperonSQLite", targets: ["OperonSQLite"]),
-    .executable(name: "OperonExpenseDemo", targets: ["OperonExpenseDemo"]),
   ],
   targets: [
-    .target(name: "OperonKit"),
     .binaryTarget(
       name: "OperonCoreApple",
-      path: "../../artifacts/OperonCore.xcframework"
+      url:
+        "https://github.com/markdsparks/operon/releases/download/v0.3.0/OperonCore.xcframework.zip",
+      checksum: "b0a3dd70d8149c9273110792e0f5b8567cdb151fb3e8017856c294dccb0d23ec"
     ),
+    .target(name: "OperonKit", path: "sdk/swift/Sources/OperonKit"),
     .target(
       name: "OperonCoreFFI",
-      dependencies: ["OperonCoreApple"]
+      dependencies: ["OperonCoreApple"],
+      path: "sdk/swift/Sources/OperonCoreFFI"
     ),
     .target(
       name: "OperonCoreDriver",
-      dependencies: ["OperonCoreFFI", "OperonKit"]
+      dependencies: ["OperonCoreFFI", "OperonKit"],
+      path: "sdk/swift/Sources/OperonCoreDriver"
     ),
     .target(
       name: "OperonFoundationModels",
-      dependencies: ["OperonCoreDriver", "OperonKit"]
+      dependencies: ["OperonCoreDriver", "OperonKit"],
+      path: "sdk/swift/Sources/OperonFoundationModels"
     ),
     .target(
       name: "OperonSQLite",
       dependencies: ["OperonCoreDriver", "OperonKit"],
+      path: "sdk/swift/Sources/OperonSQLite",
       linkerSettings: [.linkedLibrary("sqlite3")]
-    ),
-    .executableTarget(
-      name: "OperonExpenseDemo",
-      dependencies: ["OperonCoreDriver", "OperonKit", "OperonFoundationModels"]
-    ),
-    .testTarget(
-      name: "OperonKitTests",
-      dependencies: ["OperonKit", "OperonCoreDriver", "OperonCoreFFI", "OperonSQLite"]
     ),
   ]
 )

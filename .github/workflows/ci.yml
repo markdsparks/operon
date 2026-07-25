@@ -30,15 +30,26 @@ jobs:
       - run: python -m pip install -e sdk/python
       - run: python -m unittest discover -s sdk/python/tests -v
 
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+        working-directory: sdk/javascript
+
   swift:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+      - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios aarch64-apple-darwin x86_64-apple-darwin
       - run: cargo build --release -p operon-core
       - run: scripts/build-apple-xcframework.sh
       - run: scripts/verify-apple-xcframework.sh
       - run: xcrun swift-format lint --recursive sdk/swift/Sources sdk/swift/Tests sdk/swift/Package.swift
       - run: xcrun swift test --package-path sdk/swift
+      - run: xcrun swift package dump-package
       - run: cd sdk/swift && xcodebuild -quiet -scheme OperonFoundationModels -destination 'generic/platform=iOS Simulator' build

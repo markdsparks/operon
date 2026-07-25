@@ -24,9 +24,9 @@ least three task classes while reporting its latency and generation overhead.
 - Embedded llama.cpp provider and GGUF model management
 - Hybrid lexical/vector retrieval and incremental indexing
 - [x] Portable typed application output schema subset
-- Tool registration and constrained tool selection
+- [x] Typed skill registration and constrained capability selection
 - Token-aware context compression
-- Streaming, cancellation, and execution deadlines
+- [x] Streaming, cancellation, and execution deadlines across Swift and browser hosts
 - Python wheels and a standalone CLI for macOS and Linux
 
 ## Milestone 2: portable native core
@@ -35,9 +35,11 @@ least three task classes while reporting its latency and generation overhead.
 - [x] Keep scheduling outside the core's public contract
 - [x] Port policy, planning, grounding, validation, repair, and trace behavior
 - [x] Provide an experimental C ABI for opaque session handles and JSON commands/events
-- [ ] Stabilize the C ABI and add native Swift/Python bindings
+- [x] Add a versioned Swift/C binding and distributable Apple XCFramework
+- [ ] Stabilize the C ABI and add a native Python binding
 - [ ] Bind the Python SDK to `operon-core`
-- [ ] Add model, memory, latency, and energy accounting
+- [x] Add model-call/run latency, token, thermal, and low-power measurement events on Apple
+- [ ] Publish real iPhone latency, memory, energy, and thermal measurements
 - [x] Add a versioned command/event protocol and replayable conformance format
 - [x] Make the synchronous runtime drive the resumable core
 - [x] Add versioned session snapshots and restore entry points to Rust, C, and WASM
@@ -50,17 +52,23 @@ least three task classes while reporting its latency and generation overhead.
 - [x] Drive scoped durable-memory context through the shared core and Apple host
 - [ ] Add durable session-context injection through the shared core and Apple host
 - [x] Add typed capability dependencies, completion contracts, ready-set decoding, and skill receipts
+- [x] Add strict extractive evidence contracts, exact quote offsets, and terminal abstention outcomes
+- [x] Add GroundBench answerable/unanswerable faithfulness evaluation
 - [ ] Add policy-controlled command retries, fallback providers, and compensation hooks
 
 ## Milestone 3: Apple native
 
 - [x] Swift package for iOS and macOS
+- [x] Root SwiftPM manifest with checksummed release XCFramework
+- [x] Split core iOS 16+/macOS 13+ from the iOS 26+/macOS 26+ Foundation Models product
 - [x] Apple Foundation Models system-model provider
+- [x] Full Swift protocol host for session state, skills, streaming, and cancellation
+- [x] Incremental SQLite FTS5 grounding and scoped durable memory
 - [x] Grounded typed-output vertical slice with validation and bounded repair
 - Embedded llama.cpp provider
 - Optional MLX provider
 - Keychain-aware secrets and sandboxed document access
-- Background, thermal, and low-power execution policies
+- Background, thermal, and low-power admission policies
 
 ## Milestone 4: Android native
 

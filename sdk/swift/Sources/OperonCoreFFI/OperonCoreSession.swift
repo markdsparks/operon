@@ -99,6 +99,15 @@ import Foundation
       }
     }
 
+    public func cancel(reason: String = "cancelled by host") throws -> OperonCoreStep {
+      guard let handle else { throw OperonCoreError.closed }
+      return try reason.withCString { reasonPointer in
+        try invoke { output, error in
+          operonSessionCancel(handle, reasonPointer, output, error)
+        }
+      }
+    }
+
     /// Captures private execution state at the current command boundary.
     public func snapshotJSON() throws -> String {
       guard let handle else { throw OperonCoreError.closed }
@@ -185,6 +194,14 @@ import Foundation
   private func operonSessionResume(
     _ handle: OpaquePointer,
     _ eventJSON: UnsafePointer<CChar>,
+    _ outStepJSON: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
+    _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+  ) -> Int32
+
+  @_silgen_name("operon_session_cancel")
+  private func operonSessionCancel(
+    _ handle: OpaquePointer,
+    _ reason: UnsafePointer<CChar>?,
     _ outStepJSON: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
     _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
   ) -> Int32

@@ -164,23 +164,26 @@ public actor FileOperonMemoryStore: OperonMemoryStore {
     precondition(limit > 0)
     let now = ISO8601DateFormatter().string(from: Date())
     let terms = query.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+    let candidates = records.filter { record in
+      record.namespace == scope.namespace
+        && (scope.subject == nil || record.subject == scope.subject)
+        && scope.allowedSensitivities.contains(record.sensitivity)
+        && record.status == .active
+        && (record.validFrom == nil || record.validFrom! <= now)
+        && (record.validUntil == nil || record.validUntil! > now)
+    }
+    let scored = candidates.map { record in
+      (record: record, score: score(record, terms: terms))
+    }
     return
-      records
-      .filter { record in
-        record.namespace == scope.namespace
-          && (scope.subject == nil || record.subject == scope.subject)
-          && scope.allowedSensitivities.contains(record.sensitivity)
-          && record.status == .active
-          && (record.validFrom == nil || record.validFrom! <= now)
-          && (record.validUntil == nil || record.validUntil! > now)
-      }
+      scored
       .sorted {
-        score($0, terms: terms) == score($1, terms: terms)
-          ? $0.observedAt > $1.observedAt
-          : score($0, terms: terms) > score($1, terms: terms)
+        $0.score == $1.score
+          ? $0.record.observedAt > $1.record.observedAt
+          : $0.score > $1.score
       }
       .prefix(limit)
-      .map { $0 }
+      .map(\.record)
   }
 
   public func tombstone(_ id: String) throws -> Bool {

@@ -20,6 +20,34 @@ PYTHONPATH=sdk/python/src python3 -m unittest discover -s sdk/python/tests -v
 The SDK will move onto the Rust command/event core after the protocol and C ABI
 stabilize. Until then, shared conformance fixtures prevent semantic drift.
 
+## Verifiable extractive grounding
+
+Set `Policy(grounding_mode="extractive")` when every completed claim must carry
+mechanically checkable evidence. Operon canonicalizes each retrieved chunk,
+verifies every quote as an exact substring, derives byte offsets and citations,
+and returns an `abstained` result when repair is exhausted or the model reports
+that the sources do not support an answer.
+
+```python
+from operon import LocalDocuments, Operon, Policy
+
+assistant = Operon.wrap(
+    provider,
+    grounding=LocalDocuments("./documents"),
+    policy=Policy(grounding_mode="extractive"),
+)
+result = assistant.run("What exact duration does this policy require?")
+
+if result.status == "completed":
+    for claim in result.claims:
+        print(claim.text, claim.evidence)
+else:
+    print(result.abstention)
+```
+
+Exact attribution is not semantic entailment. GroundBench therefore measures
+safe refusal and unsupported answers separately from literal quote validity.
+
 ## Local session continuity
 
 `SQLiteSessionStore` persists completed user/assistant turns locally and inserts

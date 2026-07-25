@@ -29,6 +29,9 @@ class Policy:
     request_timeout_seconds: float = 60.0
     max_replans: int = 2
     require_skill_or_clarification: bool = False
+    grounding_mode: str = "citation"
+    validation_failure: str = "abstain"
+    min_evidence_quote_chars: int = 12
 
     def __post_init__(self) -> None:
         if self.planning not in {"always", "adaptive", "never"}:
@@ -41,6 +44,14 @@ class Policy:
             raise ValueError("max_context_chars must be positive")
         if self.max_replans < 0:
             raise ValueError("max_replans cannot be negative")
+        if self.grounding_mode not in {"citation", "extractive"}:
+            raise ValueError("grounding_mode must be citation or extractive")
+        if self.validation_failure not in {"abstain", "error"}:
+            raise ValueError("validation_failure must be abstain or error")
+        if self.min_evidence_quote_chars < 1:
+            raise ValueError("min_evidence_quote_chars must be positive")
+        if self.grounding_mode == "extractive" and self.verification == "never":
+            raise ValueError("extractive grounding requires verification")
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +87,31 @@ class Source:
     path: str
     text: str
     score: float
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceQuote:
+    source_id: str
+    quote: str
+    start_byte: int | None = None
+    end_byte: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GroundedClaim:
+    text: str
+    evidence: tuple[EvidenceQuote, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Abstention:
+    reason: str
+    unsupported_claims: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Cancellation:
+    reason: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +207,7 @@ class ExecutionTrace:
 
 @dataclass(frozen=True, slots=True)
 class OperonResponse:
+    status: str
     answer: str
     output: Any | None
     sources: tuple[Source, ...]
@@ -180,4 +217,7 @@ class OperonResponse:
     declared_source_ids: tuple[str, ...] = ()
     was_repaired: bool = False
     clarification: Clarification | None = None
+    abstention: Abstention | None = None
+    cancellation: Cancellation | None = None
+    claims: tuple[GroundedClaim, ...] = ()
     skill_receipts: tuple[SkillReceipt, ...] = ()

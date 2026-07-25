@@ -49,6 +49,15 @@ impl OperonWasmSession {
         serialize_step(self.session.resume(event))
     }
 
+    /// Cancels active work and returns a terminal result without accepting
+    /// another host event.
+    pub fn cancel(&mut self, reason: Option<String>) -> Result<String, JsValue> {
+        serialize_step(
+            self.session
+                .cancel(reason.unwrap_or_else(|| "cancelled by host".into())),
+        )
+    }
+
     /// Serializes deterministic execution state for app suspension or crash
     /// recovery. Treat the result as private application state.
     pub fn snapshot(&self) -> Result<String, JsValue> {
