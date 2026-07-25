@@ -405,3 +405,73 @@ func sqliteMemoryFiltersScopeBeforeFTSRanking() async throws {
     #expect(afterTombstone.isEmpty)
   }
 #endif
+
+// MARK: - generation schema naming
+
+/// Collects every object name in a schema tree so duplicates are detectable.
+private func objectNames(_ schema: OperonSchema, into names: inout [String]) {
+  switch schema {
+  case .object(let name, _, let properties):
+    names.append(name)
+    for property in properties { objectNames(property.schema, into: &names) }
+  case .array(let items, _, _):
+    objectNames(items, into: &names)
+  case .definitions(let root, let values):
+    objectNames(root, into: &names)
+    for key in values.keys.sorted() { objectNames(values[key]!, into: &names) }
+  case .string, .number, .integer, .boolean, .reference:
+    break
+  }
+}
+
+/// A schema with `$defs` arrives at the driver with its references already
+/// inlined, so nested objects are structurally distinct types that must not
+/// share an identifier. `DynamicGenerationSchema` keys generated types by
+/// name, and duplicate names made Apple's provider fail to deserialize model
+/// output for the extractive answer schema — root, `claim` and `evidence`
+/// were all called `OperonCoreResponse`.
+///
+/// Citation mode has a single object and never collided, which is why this
+/// went unnoticed: the mode with nested objects had no provider coverage.
+@Test("inlined $defs produce uniquely named objects")
+func generationSchemaNamesNestedObjectsUniquely() throws {
+  // The shape of `answer_schema` in extractive mode.
+  let raw: [String: Any] = [
+    "$defs": [
+      "evidence": [
+        "type": "object",
+        "properties": [
+          "source_id": ["type": "string"],
+          "quote": ["type": "string"],
+        ],
+        "required": ["source_id", "quote"],
+      ],
+      "claim": [
+        "type": "object",
+        "properties": [
+          "text": ["type": "string"],
+          "evidence": [
+            "type": "array",
+            "items": ["$ref": "#/$defs/evidence"],
+            "minItems": 1,
+          ],
+        ],
+        "required": ["text", "evidence"],
+      ],
+    ],
+    "type": "object",
+    "properties": [
+      "claims": ["type": "array", "items": ["$ref": "#/$defs/claim"]],
+      "confidence": ["type": "number", "minimum": 0, "maximum": 1],
+      "abstain_reason": ["type": "string"],
+    ],
+    "required": ["claims", "confidence", "abstain_reason"],
+  ]
+
+  let schema = try JSONSchema(object: raw).operonSchema()
+  var names: [String] = []
+  objectNames(schema, into: &names)
+
+  #expect(names.count == 3, "root, claim and evidence are three distinct objects")
+  #expect(Set(names).count == names.count, "object names must be unique: \(names)")
+}
