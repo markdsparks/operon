@@ -3,11 +3,25 @@
 All notable changes to Operon are documented here. The project follows semantic
 versioning while its public APIs remain alpha.
 
+## Unreleased
+
+### Fixed
+
+- Apple Foundation Models generation schemas assign collision-free identifiers
+  to every inlined object, including application schemas with ambiguous property paths.
+- Structured abstentions retain the sources considered during grounding.
+- Swift streams deliver the validated terminal envelope rather than status alone.
+
+### Changed
+
+- Swift's source-breaking stream completion contract is queued for v0.4.0 and
+  now carries an extensible `OperonStreamCompletion` value.
+
 ## 0.3.0 — 2026-07-25
 
 ### Added
 
-- Root SwiftPM package with a reproducible, checksummed Apple XCFramework release asset.
+- Root SwiftPM package with a canonical, checksummed Apple XCFramework release asset.
 - Complete Swift host support for session artifacts, skill preparation/invocation,
   streaming, cancellation, clarification, abstention, and cancellation outcomes.
 - Incremental SQLite FTS5 grounding and scoped durable memory on Apple platforms.

@@ -342,27 +342,28 @@ func sqliteMemoryFiltersScopeBeforeFTSRanking() async throws {
     )
     var sawProvisional = false
     var sawMeasurement = false
-    var finalStatus: OperonCoreRunStatus?
-    var terminalJSON: String?
+    var terminalCompletion: OperonStreamCompletion?
 
     for try await event in driver.stream("What is two plus two?") {
       if case .provisionalModelOutput = event { sawProvisional = true }
       if case .measurement = event { sawMeasurement = true }
-      if case .finished(let status, let json) = event {
-        finalStatus = status
-        terminalJSON = json
+      if case .finished(let completion) = event {
+        terminalCompletion = completion
       }
     }
 
     #expect(sawProvisional)
     #expect(sawMeasurement)
-    #expect(finalStatus == .completed)
     // A streamed turn must DELIVER its answer, not merely report that one
     // exists. Yielding a bare status forced a caller to run the whole turn
     // again to find out what it concluded, and grounded turns take seconds.
-    let json = try #require(terminalJSON)
-    #expect(json.contains("\"status\":\"completed\""))
-    #expect(json.contains("four") || json.contains("4"))
+    let completion = try #require(terminalCompletion)
+    #expect(completion.status == .completed)
+    let envelope = try #require(
+      JSONSerialization.jsonObject(with: Data(completion.json.utf8)) as? [String: Any])
+    let result = try #require(envelope["result"] as? [String: Any])
+    #expect(result["status"] as? String == "completed")
+    #expect(result["answer"] as? String == "Four.")
   }
 #endif
 
@@ -484,4 +485,37 @@ func generationSchemaNamesNestedObjectsUniquely() throws {
 
   #expect(names.count == 3, "root, claim and evidence are three distinct objects")
   #expect(Set(names).count == names.count, "object names must be unique: \(names)")
+}
+
+/// Human-readable property paths are not unique: `a_b` and nested `a.b`
+/// collapse to the same string, as do `items_Item` and an array named `items`.
+/// Object identifiers therefore must not be derived from property spelling.
+@Test("generation schema names cannot collide through property paths")
+func generationSchemaNamesIgnoreAmbiguousPropertyPaths() throws {
+  let emptyObject: [String: Any] = ["type": "object", "properties": [:]]
+  let raw: [String: Any] = [
+    "type": "object",
+    "properties": [
+      "a": [
+        "type": "object",
+        "properties": ["b": emptyObject],
+      ],
+      "a_b": emptyObject,
+      "items": ["type": "array", "items": emptyObject],
+      "items_Item": emptyObject,
+      "punctuation-key!": emptyObject,
+    ],
+  ]
+
+  let schema = try JSONSchema(object: raw).operonSchema()
+  var names: [String] = []
+  objectNames(schema, into: &names)
+
+  #expect(names.count == 7)
+  #expect(Set(names).count == names.count, "object names must be unique: \(names)")
+  #expect(
+    names.allSatisfy { name in
+      name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    },
+    "generated object identifiers must not inherit punctuation from property names")
 }

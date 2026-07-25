@@ -108,7 +108,9 @@ for try await event in driver.stream("Summarize the local policy") {
   switch event {
   case .provisionalModelOutput(_, let text): renderDraft(text)
   case .measurement(let sample): metrics.record(sample)
-  case .finished(let status): renderTerminal(status)
+  case .finished(let completion):
+    let result = OperonCoreCompletedResult(json: completion.json)
+    renderTerminal(completion.status, result)
   default: break
   }
 }
