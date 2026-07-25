@@ -343,16 +343,26 @@ func sqliteMemoryFiltersScopeBeforeFTSRanking() async throws {
     var sawProvisional = false
     var sawMeasurement = false
     var finalStatus: OperonCoreRunStatus?
+    var terminalJSON: String?
 
     for try await event in driver.stream("What is two plus two?") {
       if case .provisionalModelOutput = event { sawProvisional = true }
       if case .measurement = event { sawMeasurement = true }
-      if case .finished(let status) = event { finalStatus = status }
+      if case .finished(let status, let json) = event {
+        finalStatus = status
+        terminalJSON = json
+      }
     }
 
     #expect(sawProvisional)
     #expect(sawMeasurement)
     #expect(finalStatus == .completed)
+    // A streamed turn must DELIVER its answer, not merely report that one
+    // exists. Yielding a bare status forced a caller to run the whole turn
+    // again to find out what it concluded, and grounded turns take seconds.
+    let json = try #require(terminalJSON)
+    #expect(json.contains("\"status\":\"completed\""))
+    #expect(json.contains("four") || json.contains("4"))
   }
 #endif
 

@@ -274,7 +274,18 @@ public enum OperonRunEvent: Sendable, Equatable {
   case skillStarted(id: String)
   case skillCompleted(id: String)
   case measurement(OperonPerformanceSample)
-  case finished(OperonCoreRunStatus)
+  /// The terminal result: its status AND the envelope it concluded with.
+  ///
+  /// This previously carried only `OperonCoreRunStatus`, so a caller that
+  /// streamed a turn learned THAT it finished and never what it concluded —
+  /// no answer, no claims, no abstention reason — and had to run the entire
+  /// turn a second time to find out. Grounded turns are measured in seconds,
+  /// so that is not a viable shape for any real host.
+  ///
+  /// `json` rather than `OperonCoreCompletedResult` because that type lives
+  /// in OperonCoreDriver, which depends on this module and not the reverse.
+  /// Pass it to `OperonCoreCompletedResult(json:)` to decode.
+  case finished(status: OperonCoreRunStatus, json: String)
 }
 
 public struct OperonPerformanceSample: Sendable, Codable, Equatable {
