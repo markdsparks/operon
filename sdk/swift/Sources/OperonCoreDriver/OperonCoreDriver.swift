@@ -636,7 +636,11 @@ private struct CoreCommand {
   }
 }
 
-private indirect enum JSONSchema {
+/// Internal rather than file-private so the naming invariant below can be
+/// asserted directly. The conversion is where inlined `$defs` become plain
+/// nested objects, and it is worth testing at that seam rather than only
+/// through a live model.
+indirect enum JSONSchema {
   case object(properties: [(String, JSONSchema, Bool)])
   case array(JSONSchema, minimumItems: Int?, maximumItems: Int?)
   case string
@@ -708,18 +712,34 @@ private indirect enum JSONSchema {
     }
   }
 
-  func operonSchema() throws -> OperonSchema {
+  /// Every object in the tree needs a name that is unique within the tree.
+  ///
+  /// `$ref` is inlined during decoding, so a schema with `$defs` arrives here
+  /// as a plain nested structure. Naming every object the same thing then
+  /// produces several structurally different types sharing one identifier,
+  /// and a provider that keys generated types by name — `DynamicGenerationSchema`
+  /// does — cannot tell them apart. The extractive answer schema is the case
+  /// that exposed it: root, `claim` and `evidence` are three distinct objects,
+  /// and all three were called `OperonCoreResponse`.
+  ///
+  /// Citation mode has exactly one object and so never collided, which is why
+  /// this survived: the mode with nested objects is the one without provider
+  /// coverage.
+  func operonSchema(path: String = "OperonCoreResponse") throws -> OperonSchema {
     switch self {
     case .object(let properties):
       return .object(
-        name: "OperonCoreResponse",
+        name: path,
         properties: try properties.map { name, schema, optional in
-          .init(name, schema: try schema.operonSchema(), isOptional: optional)
+          .init(
+            name,
+            schema: try schema.operonSchema(path: path + "_" + name),
+            isOptional: optional)
         }
       )
     case .array(let items, let minimumItems, let maximumItems):
       return .array(
-        items: try items.operonSchema(),
+        items: try items.operonSchema(path: path + "_Item"),
         minimumItems: minimumItems,
         maximumItems: maximumItems)
     case .string: return .string()
