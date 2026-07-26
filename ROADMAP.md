@@ -66,7 +66,11 @@ least three task classes while reporting its latency and generation overhead.
 - [x] Incremental SQLite FTS5 grounding and scoped durable memory
 - [x] Grounded typed-output vertical slice with validation and bounded repair
 - Embedded llama.cpp provider
-- Optional MLX provider
+- [x] Optional MLX provider — `OperonMLX`, a separate SwiftPM manifest
+      (`sdk/swift-mlx`, iOS 17+/macOS 14+) so mlx-swift-lm's own platform
+      floor never forces every OperonKit consumer up from iOS 16. No Apple
+      Intelligence dependency at all — the whole point is a model tier
+      reachable on hardware Foundation Models never touches
 - Keychain-aware secrets and sandboxed document access
 - Background, thermal, and low-power admission policies
 

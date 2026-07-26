@@ -5,6 +5,23 @@ versioning while its public APIs remain alpha.
 
 ## Unreleased
 
+### Added
+
+- `OperonMLX`, an `OperonModelProvider` conformance backed directly by
+  `mlx-swift-lm` (Qwen3.5-4B-4bit by default) — no Apple FoundationModels
+  dependency, no iOS 26 floor, no Apple Intelligence eligibility check.
+  Ships as its own SwiftPM manifest at `sdk/swift-mlx` rather than a target
+  inside `sdk/swift`, because mlx-swift-lm's own platform floor (iOS
+  17+/macOS 14+) would otherwise force every consumer of OperonKit up from
+  iOS 16, whether or not they touch MLX. Gated on device RAM
+  (`recommendedMinimumRAMBytes`, default 12GB) rather than OS version. No
+  native structured generation on this path — `OperonSchema` renders to a
+  text instruction in the system prompt, and Operon's own JSON validation
+  and bounded-repair loop is the safety net for whatever the model gets
+  wrong; `MLXGuidedGeneration` (already in mlx-swift-lm, xgrammar-backed) is
+  the natural upgrade to real grammar-constrained decoding, left for a
+  follow-up.
+
 ## 0.4.0 — 2026-07-26
 
 ### Fixed
