@@ -5,6 +5,8 @@ versioning while its public APIs remain alpha.
 
 ## Unreleased
 
+## 0.4.0 — 2026-07-26
+
 ### Fixed
 
 - Apple Foundation Models generation schemas assign collision-free identifiers
@@ -14,8 +16,11 @@ versioning while its public APIs remain alpha.
 
 ### Changed
 
-- Swift's source-breaking stream completion contract is queued for v0.4.0 and
-  now carries an extensible `OperonStreamCompletion` value.
+- Swift's source-breaking stream completion contract now carries an extensible
+  `OperonStreamCompletion` value containing the authoritative result envelope.
+- Rust, Python, and JavaScript package versions are now 0.4.0. The execution
+  protocol and C ABI remain experimental 0.3 because their wire contracts did
+  not change in this release.
 
 ## 0.3.0 — 2026-07-25
 

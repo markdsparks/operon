@@ -19,8 +19,8 @@ let package = Package(
     .binaryTarget(
       name: "OperonCoreApple",
       url:
-        "https://github.com/markdsparks/operon/releases/download/v0.3.0/OperonCore.xcframework.zip",
-      checksum: "b0a3dd70d8149c9273110792e0f5b8567cdb151fb3e8017856c294dccb0d23ec"
+        "https://github.com/markdsparks/operon/releases/download/v0.4.0/OperonCore.xcframework.zip",
+      checksum: "be3ec547d6385dd70db709ae74af2e4edb9afe0918c423402f6079b4b473de68"
     ),
     .target(name: "OperonKit", path: "sdk/swift/Sources/OperonKit"),
     .target(
