@@ -13,12 +13,12 @@ query → plan → ready actions → prepare → act → verify completion → r
 Operon is not an inference engine. It sits above inference engines and makes
 constrained models more useful through orchestration and explicit structure.
 
-> Status: v0.3 alpha with a portable Rust core, Python and JavaScript hosts,
+> Status: v0.4 alpha with a portable Rust core, Python and JavaScript hosts,
 > and a Swift package that can be added directly from GitHub on Apple
 > platforms. Public contracts remain
 > intentionally small and experimental.
 
-See the [v0.3 release notes](RELEASE_NOTES.md) and [changelog](CHANGELOG.md).
+See the [v0.4 release notes](RELEASE_NOTES.md) and [changelog](CHANGELOG.md).
 
 **AppBench evidence:** on 20 synthetic app tasks repeated three times, the same
 local Qwen3 4B model completed 90% with the original Operon harness versus 20%
@@ -115,7 +115,7 @@ is a checksummed GitHub release asset rather than a vendored build step.
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/markdsparks/operon.git", from: "0.3.0")
+  .package(url: "https://github.com/markdsparks/operon.git", from: "0.4.0")
 ]
 ```
 
@@ -206,7 +206,7 @@ boundary and restore without replaying completed work. C and WASM entry points
 carry the same versioned state; hosts persist the outstanding command and use
 its stable idempotency key to deduplicate side effects.
 
-## What v0.3 does
+## What Operon does
 
 - Uses a fast path for simple requests and planning for complex ones.
 - Turns complex queries into intent, subquestions, and answer requirements.

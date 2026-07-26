@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "operon-runtime"
-version = "0.3.0"
+version = "0.4.0"
 description = "A local-first cognitive runtime for small language models"
 readme = "README.md"
 requires-python = ">=3.11"

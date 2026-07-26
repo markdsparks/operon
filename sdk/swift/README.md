@@ -9,7 +9,7 @@ Add the repository root in Xcode or `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/markdsparks/operon.git", from: "0.3.0")
+  .package(url: "https://github.com/markdsparks/operon.git", from: "0.4.0")
 ]
 ```
 
