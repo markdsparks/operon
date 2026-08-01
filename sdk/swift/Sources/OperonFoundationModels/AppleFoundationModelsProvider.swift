@@ -6,6 +6,15 @@ import OperonKit
 public struct AppleFoundationModelsProvider: OperonModelProvider {
   private let model: SystemLanguageModel
 
+  public var capabilities: OperonModelCapabilities {
+    .init(
+      structuredGeneration: .native,
+      nativeStreaming: true,
+      reportsTokenUsage: false,
+      supportsPrewarming: false
+    )
+  }
+
   public init(model: SystemLanguageModel = .default) {
     self.model = model
   }

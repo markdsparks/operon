@@ -263,6 +263,82 @@ func sqliteMemoryFiltersScopeBeforeFTSRanking() async throws {
 
 #if os(macOS)
   @Test
+  func instantBoostFacadeKeepsAPlainWrapToOneModelCall() async throws {
+    let provider = ScriptedProvider([
+      #"{"answer":"Four.","confidence":0.95,"used_source_ids":[]}"#
+    ])
+    let operon = OperonRuntime.wrap(provider)
+
+    #expect(operon.policy.planning == .never)
+    #expect(operon.providerCapabilities.structuredGeneration == .promptOnly)
+
+    let result = try await operon.ask("Analyze this simple question: what is two plus two?")
+
+    #expect(result.status == .completed)
+    #expect(result.answer == "Four.")
+    #expect(result.output == nil)
+    #expect(result.skillReceipts.isEmpty)
+    #expect(await provider.requestCount == 1)
+  }
+
+  @Test
+  func automaticFacadeEnablesPlanningWhenKnowledgeIsAttached() async throws {
+    let provider = ScriptedProvider([
+      #"{"intent":"Determine allowance","subquestions":[],"needs_grounding":true,"answer_requirements":[],"skill_calls":[]}"#,
+      #"{"answer":"The allowed amount is $68 [S1]","confidence":0.9,"used_source_ids":["S1"]}"#,
+    ])
+    let operon = OperonRuntime.wrap(provider, grounding: RecordingGrounding())
+
+    #expect(operon.policy.planning == .adaptive)
+    let result = try await operon.ask("Analyze the allowed amount according to policy.")
+
+    #expect(result.answer.contains("$68"))
+    #expect(result.sources.map(\.id) == ["S1"])
+    #expect(await provider.requestCount == 2)
+  }
+
+  @Test
+  func instantBoostReturnsAnInspectableAbstentionInsteadOfThrowing() async throws {
+    let provider = ScriptedProvider([
+      #"{"claims":[],"confidence":0.0,"abstain_reason":"The sources do not state a retention period."}"#
+    ])
+    let operon = OperonRuntime.wrap(
+      provider,
+      grounding: RecordingGrounding(),
+      profile: .fast,
+      policy: OperonPolicy(planning: .never, groundingMode: .extractive)
+    )
+
+    let result = try await operon.ask("What retention period is required?")
+
+    #expect(result.status == .abstained)
+    #expect(result.abstention?.reason == "unsupported_by_sources")
+    #expect(result.sources.map(\.id) == ["S1"])
+    #expect(await provider.requestCount == 1)
+  }
+
+  @Test
+  func automaticFacadeRequiresPlanningWhenSkillsAreAttached() {
+    let operon = OperonRuntime.wrap(
+      ScriptedProvider([]),
+      skillHost: RecordingSkillHost()
+    )
+
+    #expect(operon.policy.planning == .always)
+  }
+
+  @Test
+  func readableTurnResultAcceptsOlderTerminalEnvelopesWithoutSkillReceipts() throws {
+    let json =
+      #"{"kind":"complete","result":{"status":"completed","answer":"Four.","output":null,"sources":[],"confidence":0.95,"plan":{"intent":"What is two plus two?","subquestions":[],"needs_grounding":false,"answer_requirements":[]},"trace":[],"was_repaired":false,"clarification":null,"abstention":null,"cancellation":null,"claims":[]}}"#
+
+    let result = try OperonCoreCompletedResult(json: json).turnResult()
+
+    #expect(result.answer == "Four.")
+    #expect(result.skillReceipts.isEmpty)
+  }
+
+  @Test
   func rustCoreDriverExecutesGroundingAndGenerationLocally() async throws {
     let provider = ScriptedProvider([
       #"{"answer":"The allowed amount is $68 [S1]","confidence":0.9,"used_source_ids":["S1"]}"#
@@ -328,6 +404,9 @@ func sqliteMemoryFiltersScopeBeforeFTSRanking() async throws {
     let result = try await driver.run("Create a lunch event")
 
     #expect(result.json.contains("\"skill_id\":\"calendar.create\""))
+    let turn = try result.turnResult()
+    #expect(turn.answer == "Created lunch.")
+    #expect(turn.skillReceipts.map(\.skillID) == ["calendar.create"])
     #expect(await skills.invocations == 1)
   }
 
@@ -364,6 +443,7 @@ func sqliteMemoryFiltersScopeBeforeFTSRanking() async throws {
     let result = try #require(envelope["result"] as? [String: Any])
     #expect(result["status"] as? String == "completed")
     #expect(result["answer"] as? String == "Four.")
+    #expect(try completion.turnResult().answer == "Four.")
   }
 #endif
 

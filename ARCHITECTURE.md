@@ -50,6 +50,20 @@ InferenceProvider
 `ModelCapabilities`, and returns a `GenerationResponse`. It intentionally knows
 nothing about retrieval, planning, or verification.
 
+Swift exposes the same boundary through `OperonModelProvider`. Providers declare
+whether structured generation is native, grammar-constrained, or prompt-only,
+along with streaming, context, usage, and prewarming capabilities. The portable
+runtime remains provider-neutral; each adapter maps an Operon schema onto the
+strongest primitive it can actually enforce and relies on post-generation
+validation and repair for the rest.
+
+`OperonRuntime.wrap` is the high-level Swift facade over the canonical core
+driver. Its automatic profile uses no planning call for a plain model, enables
+adaptive planning when knowledge or continuity is attached, and requires
+planning when app-owned skills are present. `OperonCoreDriver` remains the
+lower-level command/event host for applications that need direct protocol
+control.
+
 Each generation request carries a reasoning-effort hint. The v0.2 runtime disables
 provider-native thinking for bounded structured stages because a thinking model
 can consume its output budget before emitting JSON. Future policies may allocate

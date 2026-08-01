@@ -5,6 +5,18 @@ versioning while its public APIs remain alpha.
 
 ## Unreleased
 
+### Added
+
+- `OperonRuntime.wrap(model).ask(query)` as the canonical progressive Swift
+  entry point, with a typed terminal result instead of protocol JSON.
+- Swift provider capability declarations for native, grammar-constrained, or
+  prompt-only structured generation plus streaming and resource metadata.
+- An automatic first-boost profile that keeps a plain model wrap to one call,
+  enables adaptive planning with knowledge or continuity, and requires planning
+  when app-owned skills are attached.
+- BoostBench's `operon_instant` configuration for isolating bounded retrieval,
+  validation, and repair without a planning model call.
+
 ## 0.4.0 — 2026-07-26
 
 ### Fixed

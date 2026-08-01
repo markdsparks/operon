@@ -30,9 +30,11 @@ from benchmarks.groundbench import (
 )
 from benchmarks.matrix import aggregate_matrix, model_slug
 from benchmarks.run import (
+    CONFIGURATIONS,
     PROTOCOL_VERSION,
     Case,
     RunRecord,
+    _policy_for_configuration,
     case_digest,
     load_cases,
     score_answer,
@@ -41,6 +43,13 @@ from benchmarks.run import (
 
 
 class BenchmarkTests(unittest.TestCase):
+    def test_instant_boost_is_a_first_class_benchmark_configuration(self) -> None:
+        self.assertIn("operon_instant", CONFIGURATIONS)
+        policy = _policy_for_configuration("operon_instant")
+        self.assertEqual(policy.planning, "never")
+        self.assertEqual(policy.verification, "adaptive")
+        self.assertTrue(policy.local_only)
+
     def test_groundbench_covers_answerable_and_unanswerable_evidence(self) -> None:
         suite, cases = load_ground_suite(Path("benchmarks/ground_cases.json"))
 
