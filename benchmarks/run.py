@@ -29,6 +29,7 @@ from operon.models import GenerationRequest, OperonResponse
 CONFIGURATIONS = (
     "question_only",
     "all_context",
+    "operon_instant",
     "operon_unverified",
     "operon_full",
 )
@@ -315,6 +316,16 @@ def _trace_data(response: OperonResponse) -> tuple[list[dict[str, Any]], int, in
     )
 
 
+def _policy_for_configuration(
+    configuration: str, *, allow_remote: bool = False
+) -> Policy:
+    return Policy(
+        local_only=not allow_remote,
+        planning="never" if configuration == "operon_instant" else "always",
+        verification="never" if configuration == "operon_unverified" else "adaptive",
+    )
+
+
 def run_operon(
     provider: OpenAICompatibleProvider,
     case: Case,
@@ -323,17 +334,12 @@ def run_operon(
     *,
     allow_remote: bool = False,
 ) -> RunRecord:
-    verification = "never" if configuration == "operon_unverified" else "adaptive"
     runtime = Operon(
         provider,
         grounding=LocalDocuments(case.documents),
         # Local-only is the product default. A benchmark can opt into a remote
         # reference only through the explicit command-line/profile switch.
-        policy=Policy(
-            local_only=not allow_remote,
-            planning="always",
-            verification=verification,
-        ),
+        policy=_policy_for_configuration(configuration, allow_remote=allow_remote),
     )
     started = monotonic()
     response = runtime.run(case.query)

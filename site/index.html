@@ -30,7 +30,7 @@
     <main id="top">
       <section class="hero wrap">
         <div class="hero-copy">
-          <p class="eyebrow"><i></i> Operon v0.4 · Drop-in local AI runtime for real apps</p>
+          <p class="eyebrow"><i></i> Operon · Drop-in local AI runtime for real apps</p>
           <h1>Keep your model.<br /><em>Upgrade it.</em></h1>
           <p class="lede"><strong>Put Operon between natural language and the local model already in your app.</strong> It adds the execution layer a model does not: typed state, authorized actions, verifiable evidence, memory, streaming, and safe terminal outcomes. No retraining, model swap, or cloud migration.</p>
           <div class="actions">
@@ -218,12 +218,12 @@
 
       <section class="proof" id="proof">
         <div class="wrap proof-grid">
-          <div class="proof-copy"><p class="eyebrow">AppBench + GroundBench · two things an app needs</p><h2>Can it finish—<br /><em>and show its work?</em></h2><p>AppBench measures whether the model completes the requested app action. GroundBench measures whether local-knowledge answers carry checkable evidence and refuse missing facts. Both use the same local Qwen3 4B model across each comparison.</p><div class="proof-links"><a href="https://github.com/markdsparks/operon/blob/main/benchmarks/APPBENCH.md">AppBench methodology <span>→</span></a><a href="https://github.com/markdsparks/operon/blob/main/benchmarks/GROUNDBENCH.md">GroundBench methodology <span>→</span></a><a href="https://github.com/markdsparks/operon/tree/main/benchmarks/published">Machine-readable results <span>→</span></a></div><small>Focused development evidence on one model—not a general ranking or iPhone performance result. Exact quotes prove attribution, not semantic entailment.</small></div>
+          <div class="proof-copy"><p class="eyebrow">BoostBench · does the first wrapper earn its cost?</p><h2>Same local model.<br /><em>A better answer system.</em></h2><p>Across 30 human-reviewed local-knowledge decisions, repeated three times on the same Qwen3 4B model, Instant Boost improved accuracy, completeness, and checkable provenance—without adding a planner or a second model call.</p><div class="proof-links"><a href="https://github.com/markdsparks/operon/blob/main/benchmarks/BOOSTBENCH.md">BoostBench methodology <span>→</span></a><a href="https://github.com/markdsparks/operon/blob/main/benchmarks/BOOSTBENCH_RESULTS.md">Development results <span>→</span></a><a href="https://github.com/markdsparks/operon/blob/main/benchmarks/published/boostbench-qwen3-4b-instant-3x.summary.json">Machine-readable summary <span>→</span></a></div><small>Focused development evidence on one local 4B model and Apple arm64 host—not a general ranking or iPhone performance result.</small></div>
           <div class="metrics">
-            <article><strong>12/12</strong><span>dependent app jobs finished with TaskGraph; raw finished 0/12</span></article>
-            <article><strong>100%</strong><span>of strict quote-bearing records had exact evidence; raw had 75%</span></article>
-            <article><strong>75%</strong><span>complete supported answers in strict mode—the same as raw full context</span></article>
-            <article class="metric-gap"><strong>41.7%</strong><span>safe refusal in strict mode: a measured semantic-support gap, not a hidden one</span></article>
+            <article><strong>82.2%</strong><span>correct local decisions; direct full-context prompting reached 73.3%</span></article>
+            <article><strong>53.3%</strong><span>complete answers; direct full context reached 20.0%</span></article>
+            <article><strong>100%</strong><span>valid provenance; direct full context reached 3.3%</span></article>
+            <article class="metric-gap"><strong>1.00</strong><span>average model calls in both arms; median latency was 727 ms versus 501 ms direct</span></article>
           </div>
         </div>
       </section>

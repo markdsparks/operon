@@ -443,6 +443,12 @@ public struct OperonCoreCompletedResult: Sendable, Equatable {
   public func status() throws -> OperonCoreRunStatus {
     try JSONDecoder().decode(CoreTerminalEnvelope.self, from: Data(json.utf8)).result.status
   }
+
+  /// Decodes the portable terminal envelope into the high-level result used
+  /// by `OperonRuntime.ask(_:)`.
+  public func turnResult() throws -> OperonTurnResult {
+    try decodeTurnResult(json)
+  }
 }
 
 private enum CoreCommandKind {
@@ -850,7 +856,7 @@ private struct CoreTerminalEnvelope: Decodable {
 private struct CoreTerminalResult: Decodable {
   let status: OperonCoreRunStatus
   let answer: String
-  let output: JSONValue
+  let output: OperonJSONValue?
   let sources: [OperonSource]
   let confidence: Double
   let plan: OperonPlan
@@ -860,11 +866,13 @@ private struct CoreTerminalResult: Decodable {
   let abstention: OperonAbstention?
   let cancellation: OperonCancellation?
   let claims: [OperonGroundedClaim]
+  let skillReceipts: [OperonSkillReceipt]?
 
   enum CodingKeys: String, CodingKey {
     case status, answer, output, sources, confidence, plan, trace
     case clarification, abstention, cancellation, claims
     case wasRepaired = "was_repaired"
+    case skillReceipts = "skill_receipts"
   }
 }
 
@@ -879,27 +887,6 @@ private struct CoreTraceEvent: Decodable {
   }
 }
 
-private struct JSONValue: Decodable {
-  let value: Any
-
-  init(from decoder: Decoder) throws {
-    let container = try decoder.singleValueContainer()
-    if container.decodeNil() {
-      value = NSNull()
-    } else if let bool = try? container.decode(Bool.self) {
-      value = bool
-    } else if let number = try? container.decode(Double.self) {
-      value = number
-    } else if let string = try? container.decode(String.self) {
-      value = string
-    } else if let array = try? container.decode([JSONValue].self) {
-      value = array.map(\.value)
-    } else {
-      value = try container.decode([String: JSONValue].self).mapValues(\.value)
-    }
-  }
-}
-
 private func decodeTerminalOutcome<Output: Codable & Sendable>(
   _ json: String,
   outputType: Output.Type
@@ -910,10 +897,10 @@ private func decodeTerminalOutcome<Output: Codable & Sendable>(
   }
   switch envelope.result.status {
   case .completed:
-    let outputData = try JSONSerialization.data(
-      withJSONObject: envelope.result.output.value,
-      options: [.fragmentsAllowed]
-    )
+    guard let outputValue = envelope.result.output else {
+      throw OperonCoreError.invalidResponse("Completed typed result omitted its output.")
+    }
+    let outputData = try JSONEncoder().encode(outputValue)
     let output = try JSONDecoder().decode(Output.self, from: outputData)
     return .completed(
       OperonResult(
@@ -948,6 +935,34 @@ private func decodeTerminalOutcome<Output: Codable & Sendable>(
     }
     return .cancelled(cancellation)
   }
+}
+
+private func decodeTurnResult(_ json: String) throws -> OperonTurnResult {
+  let envelope = try JSONDecoder().decode(CoreTerminalEnvelope.self, from: Data(json.utf8))
+  guard envelope.kind == "complete" else {
+    throw OperonCoreError.invalidResponse("Operon core returned a non-terminal result envelope.")
+  }
+  return OperonTurnResult(
+    status: envelope.result.status,
+    answer: envelope.result.answer,
+    output: envelope.result.output,
+    confidence: envelope.result.confidence,
+    sources: envelope.result.sources,
+    plan: envelope.result.plan,
+    trace: envelope.result.trace.map {
+      OperonTraceEvent(
+        stage: $0.stage,
+        message: $0.message,
+        elapsedMilliseconds: $0.elapsedMilliseconds
+      )
+    },
+    wasRepaired: envelope.result.wasRepaired,
+    clarification: envelope.result.clarification,
+    abstention: envelope.result.abstention,
+    cancellation: envelope.result.cancellation,
+    claims: envelope.result.claims,
+    skillReceipts: envelope.result.skillReceipts ?? []
+  )
 }
 
 private func jsonSchema(from schema: OperonSchema) -> [String: Any] {

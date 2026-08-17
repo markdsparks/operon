@@ -124,6 +124,27 @@ Core, driver, SQLite grounding, and memory support iOS 16+ and macOS 13+.
 26+, so older systems can use another local provider without raising the whole
 package floor. See the [Swift integration guide](sdk/swift/README.md).
 
+The first boost is one wrapper and one readable result. With no knowledge,
+memory, or skills attached, the automatic profile stays on the one-call fast
+path; deterministic validation and a targeted repair are added around the
+existing provider.
+
+```swift
+import OperonCoreDriver
+import OperonFoundationModels
+
+let ai = OperonRuntime.wrap(AppleFoundationModelsProvider())
+let result = try await ai.ask("Turn this description into a practical plan")
+
+print(result.answer)
+print(result.status)
+```
+
+Attach grounding, typed session state, memory, and app-owned skills only when
+the product needs them. `OperonRuntime` selects an appropriate planning profile
+from those attached capabilities; an explicit `OperonPolicy` still overrides
+every default.
+
 Applications can also require typed data alongside the readable answer:
 
 ```python
@@ -272,8 +293,11 @@ The first real-model integration result is recorded in
 [benchmarks/SMOKE.md](benchmarks/SMOKE.md). It is evidence that the complete
 pipeline works, not a general capability claim.
 
-The repeatable four-configuration evaluation harness is documented in
+The repeatable five-configuration evaluation harness is documented in
 [benchmarks/README.md](benchmarks/README.md).
+The focused one-call wrapper comparison is documented in
+[BoostBench](benchmarks/BOOSTBENCH.md); the first repeated local run is in
+[BoostBench development results](benchmarks/BOOSTBENCH_RESULTS.md).
 The app-task comparison and first repeated development run are documented in
 [benchmarks/APPBENCH.md](benchmarks/APPBENCH.md) and
 [benchmarks/APPBENCH_RESULTS.md](benchmarks/APPBENCH_RESULTS.md).

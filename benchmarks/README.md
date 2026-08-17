@@ -1,5 +1,15 @@
 # Operon benchmark harness
 
+## BoostBench: does the first wrapper earn its cost?
+
+BoostBench compares direct full-context generation with the same model using
+Operon's one-call instant profile: bounded retrieval, structured output,
+validation, and repair only when required. It deliberately excludes planning,
+skills, memory, and TaskGraph execution.
+
+Read [BoostBench](BOOSTBENCH.md) for the command, controls, metrics, and
+publication gate.
+
 ## GroundBench: can the evidence be checked?
 
 GroundBench is the v0.3 faithfulness suite. It separates complete supported
@@ -41,13 +51,15 @@ PYTHONPATH=sdk/python/src:. python3 -m benchmarks.appbench \
 
 ## Grounded answer benchmark
 
-The harness compares four ways of using the same model:
+The harness compares five ways of using the same model:
 
 1. `question_only`: direct structured call with no local documents.
 2. `all_context`: direct call with every case document inserted manually.
-3. `operon_unverified`: Operon planning and retrieval without semantic
+3. `operon_instant`: Operon retrieval, validation, and bounded repair without
+   a planning model call.
+4. `operon_unverified`: Operon planning and retrieval without semantic
    provenance validation or repair.
-4. `operon_full`: the complete planning, retrieval, validation, and repair loop.
+5. `operon_full`: the complete planning, retrieval, validation, and repair loop.
 
 This separation measures whether gains come from merely having context,
 retrieving the right context, or enforcing the complete runtime contract.

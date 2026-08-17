@@ -35,15 +35,23 @@ import OperonFoundationModels
 
 @available(iOS 26, macOS 26, *)
 func ask(_ query: String) async throws {
-  let driver = OperonCoreDriver(
-    model: AppleFoundationModelsProvider(),
-    policy: OperonPolicy(planning: .adaptive)
-  )
+  let ai = OperonRuntime.wrap(AppleFoundationModelsProvider())
 
-  let terminal = try await driver.run(query)
-  print(terminal.json)
+  let result = try await ai.ask(query)
+  print(result.answer)
 }
 ```
+
+`OperonRuntime.wrap` is the canonical progressive API. A plain wrap uses the
+one-call fast path. Attach `grounding` and automatic planning becomes available
+for complex knowledge work; attach a `skillHost` or completion contract and
+planning becomes required for app actions. Pass an explicit `OperonPolicy` when
+the app needs to override those defaults.
+
+The result exposes `status`, `answer`, sources, verified claims, repair state,
+clarification, abstention, cancellation, skill receipts, and the execution
+trace. Apps no longer need to decode the core's portable JSON envelope for a
+normal turn. `OperonCoreDriver` remains public for protocol-level hosts.
 
 The provider uses Apple guided-generation schemas. Operon supports objects,
 arrays, numeric and array bounds, enums, local `$defs`/`$ref` definitions, and
@@ -67,8 +75,8 @@ try await grounding.index([
 ])
 
 let memory = try SQLiteOperonMemoryStore(url: storeURL)
-let driver = OperonCoreDriver(
-  model: model,
+let ai = OperonRuntime.wrap(
+  model,
   grounding: grounding,
   memory: memory,
   memoryScope: OperonMemoryScope(namespace: "account-42"),

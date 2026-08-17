@@ -5,6 +5,44 @@ public enum OperonAvailability: Sendable, Equatable {
   case unavailable(reason: String)
 }
 
+/// What a model adapter can enforce during generation.
+///
+/// Operon uses this contract to keep runtime policy provider-neutral while
+/// still letting each adapter compile a portable schema onto its strongest
+/// available primitive. A prompt-only provider remains valid: Operon's local
+/// validation and bounded repair are the fallback rather than hidden claims
+/// of native constrained decoding.
+public struct OperonModelCapabilities: Sendable, Equatable {
+  public enum StructuredGeneration: String, Sendable, Codable {
+    /// The platform API itself generates a value matching the supplied schema.
+    case native
+    /// Token sampling is constrained by a grammar compiled from the schema.
+    case grammar
+    /// The schema is expressed in the prompt and enforced after generation.
+    case promptOnly
+  }
+
+  public let structuredGeneration: StructuredGeneration
+  public let nativeStreaming: Bool
+  public let contextWindowTokens: Int?
+  public let reportsTokenUsage: Bool
+  public let supportsPrewarming: Bool
+
+  public init(
+    structuredGeneration: StructuredGeneration = .promptOnly,
+    nativeStreaming: Bool = false,
+    contextWindowTokens: Int? = nil,
+    reportsTokenUsage: Bool = false,
+    supportsPrewarming: Bool = false
+  ) {
+    self.structuredGeneration = structuredGeneration
+    self.nativeStreaming = nativeStreaming
+    self.contextWindowTokens = contextWindowTokens
+    self.reportsTokenUsage = reportsTokenUsage
+    self.supportsPrewarming = supportsPrewarming
+  }
+}
+
 public struct OperonMessage: Sendable, Codable, Equatable {
   public enum Role: String, Sendable, Codable {
     case system
@@ -57,6 +95,7 @@ public struct OperonGenerationResponse: Sendable, Equatable {
 }
 
 public protocol OperonModelProvider: Sendable {
+  var capabilities: OperonModelCapabilities { get }
   func availability() async -> OperonAvailability
   func generate(_ request: OperonGenerationRequest) async throws -> OperonGenerationResponse
   /// Produces cumulative provisional structured output. The final return value
@@ -68,6 +107,8 @@ public protocol OperonModelProvider: Sendable {
 }
 
 extension OperonModelProvider {
+  public var capabilities: OperonModelCapabilities { .init() }
+
   public func generateStreaming(
     _ request: OperonGenerationRequest,
     onUpdate: @escaping @Sendable (String) -> Void

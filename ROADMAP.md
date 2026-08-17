@@ -21,6 +21,10 @@ least three task classes while reporting its latency and generation overhead.
 
 ## Milestone 1: useful desktop package
 
+- [x] Canonical progressive Swift `wrap`/`ask` facade with a typed terminal result
+- [x] Provider structured-generation and streaming capability declarations
+- [x] One-call instant profile and a dedicated BoostBench configuration
+- [ ] Publish repeated BoostBench results across at least two provider/model tiers
 - Embedded llama.cpp provider and GGUF model management
 - Hybrid lexical/vector retrieval and incremental indexing
 - [x] Portable typed application output schema subset
