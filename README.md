@@ -296,7 +296,8 @@ pipeline works, not a general capability claim.
 The repeatable five-configuration evaluation harness is documented in
 [benchmarks/README.md](benchmarks/README.md).
 The focused one-call wrapper comparison is documented in
-[BoostBench](benchmarks/BOOSTBENCH.md).
+[BoostBench](benchmarks/BOOSTBENCH.md); the first repeated local run is in
+[BoostBench development results](benchmarks/BOOSTBENCH_RESULTS.md).
 The app-task comparison and first repeated development run are documented in
 [benchmarks/APPBENCH.md](benchmarks/APPBENCH.md) and
 [benchmarks/APPBENCH_RESULTS.md](benchmarks/APPBENCH_RESULTS.md).

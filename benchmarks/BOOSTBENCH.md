@@ -47,3 +47,9 @@ Before publishing an Instant Boost claim:
 The next track will add provider-neutral typed extraction cases with no local
 documents. That will isolate schema validity and repair for a literal
 `Operon.wrap(model)` call.
+
+## First development result
+
+The first complete three-repetition run is now recorded in
+[BoostBench development results](BOOSTBENCH_RESULTS.md), with a tracked
+[machine-readable summary](published/boostbench-qwen3-4b-instant-3x.summary.json).

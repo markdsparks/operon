@@ -1,0 +1,57 @@
+{
+  "suite": "boostbench",
+  "suite_version": "0.1",
+  "suite_digest": "9540a2516427e5c2e78cdf6f82bf3b6a6ebdc18071ad02a7166e82d1361cc243",
+  "suite_digest_method": "SHA-256 of the lexically sorted 30 per-case corpus digests recorded in the detailed JSONL output.",
+  "run_id": "210c1082-7ef8-458c-86b7-b00bc5790c87",
+  "commit": "1799fdd2949611ef6a59c706138af4794e234669",
+  "model": "qwen3:4b",
+  "model_quantization": "Q4_K_M",
+  "provider": "Ollama 0.32.14",
+  "cases": 30,
+  "repetitions": 3,
+  "runs_per_configuration": 90,
+  "protocol_version": "1.0",
+  "evaluator_version": "1.2",
+  "operon_package_version": "0.4.0",
+  "host": "Apple arm64, macOS 26.6.1",
+  "run_date": "2026-08-17",
+  "summary": {
+    "all_context": {
+      "success_rate": 1.0,
+      "accuracy": 0.7333333333333333,
+      "completeness": 0.2,
+      "provenance_rate": 0.03333333333333333,
+      "source_recall": 1.0,
+      "source_precision": 0.9777777777777777,
+      "average_latency_ms": 622.1806666666666,
+      "median_latency_ms": 500.62,
+      "p95_latency_ms": 873.01,
+      "average_model_calls": 1.0,
+      "average_prompt_tokens": 225.6,
+      "average_completion_tokens": 43.044444444444444,
+      "repair_rate": 0.0
+    },
+    "operon_instant": {
+      "success_rate": 1.0,
+      "accuracy": 0.8222222222222222,
+      "completeness": 0.5333333333333333,
+      "provenance_rate": 1.0,
+      "source_recall": 1.0,
+      "source_precision": 0.9333333333333333,
+      "average_latency_ms": 778.5287777777778,
+      "median_latency_ms": 727.29,
+      "p95_latency_ms": 1117.82,
+      "average_model_calls": 1.0,
+      "average_prompt_tokens": 320.53333333333336,
+      "average_completion_tokens": 62.477777777777774,
+      "repair_rate": 0.8888888888888888
+    }
+  },
+  "notes": [
+    "Both configurations use the same local model, 30 human-reviewed cases, and three repetitions. The direct arm receives every case document; Instant Boost retrieves a bounded subset and validates the result.",
+    "The Instant Boost repair rate is deterministic citation normalization. It did not add a model call: both configurations averaged one model call per run.",
+    "The detailed JSONL output is retained with the run artifacts; this tracked summary is the reviewable publication record.",
+    "This is one development run on one model and host. It is not an iPhone performance, energy, thermal, or general-model claim."
+  ]
+}
